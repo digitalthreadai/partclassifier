@@ -21,28 +21,28 @@ For each part in the input Excel:
 Input Excel
     |
     v
-[ExcelHandler] ──► reads Part Number, Part Name, Manufacturer Part Number,
+[ExcelHandler] --> reads Part Number, Part Name, Manufacturer Part Number,
                         Manufacturer Name, Unit of Measure
     |
     v
-[PartClassifier] ──► calls Groq LLM (llama-3.3-70b)
-                      classifies part name → "Split Lock Washer", "Flat Washer", etc.
+[PartClassifier] --> calls Groq LLM (llama-3.3-70b)
+                      classifies part name -> "Split Lock Washer", "Flat Washer", etc.
     |
     v
-[WebScraper] ──► checks url_cache.json for known-good URL
-              ──► if no cache: runs DuckDuckGo searches, scores all candidate pages
-              ──► scrapes best page using curl_cffi (real Chrome TLS fingerprint)
-              ──► caches the winning URL for future runs
+[WebScraper] --> checks url_cache.json for known-good URL
+              --> if no cache: runs DuckDuckGo searches, scores all candidate pages
+              --> scrapes best page using curl_cffi (real Chrome TLS fingerprint)
+              --> caches the winning URL for future runs
     |
     v
-[AttributeExtractor] ──► sends scraped text + part class + unit to Groq LLM
-                      ──► LLM extracts structured attributes using canonical names
-                      ──► converts all dimensional values to target unit (inches or mm)
-                      ──► normalizes attribute names via alias mapping
+[AttributeExtractor] --> sends scraped text + part class + unit to Groq LLM
+                      --> LLM extracts structured attributes using canonical names
+                      --> converts all dimensional values to target unit (inches or mm)
+                      --> normalizes attribute names via alias mapping
     |
     v
-[ExcelHandler] ──► groups results by part class
-              ──► writes one .xlsx per class with consistent column headers
+[ExcelHandler] --> groups results by part class
+              --> writes one .xlsx per class with consistent column headers
 ```
 
 If no web content is found, the extractor falls back to mining any dimensions encoded in the Part Name itself.
@@ -53,16 +53,39 @@ If no web content is found, the extractor falls back to mining any dimensions en
 
 ### 1. Prerequisites
 
-- Python 3.11+
-- A free [Groq](https://console.groq.com/) account (for the LLM — no billing required)
+- **Python 3.11+** ([python.org](https://www.python.org/downloads/))
+- A free **[Groq](https://console.groq.com/)** account (for the LLM — no billing required)
+- **Git** (optional, for cloning the repo)
 
-### 2. Install dependencies
+### 2. Clone the repository
+
+```bash
+git clone https://github.com/digitalthreadai/partclassifier.git
+cd partclassifier
+```
+
+### 3. Create a virtual environment (recommended)
+
+```bash
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS / Linux
+```
+
+### 4. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment
+This installs:
+- `openai` — OpenAI-compatible SDK (used to call Groq API)
+- `openpyxl` — Excel read/write
+- `curl_cffi` — HTTP client with real Chrome TLS fingerprint
+- `beautifulsoup4` — HTML parsing
+- `python-dotenv` — loads `.env` file
+
+### 5. Configure environment
 
 Copy the example env file and add your Groq API key:
 
@@ -76,9 +99,9 @@ Edit `.env`:
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
-Get your key from: https://console.groq.com/keys
+Get your free API key from: https://console.groq.com/keys
 
-### 4. Prepare input Excel
+### 6. Prepare input Excel
 
 Place your input file at:
 
@@ -96,7 +119,9 @@ Required columns (exact names):
 | Manufacturer Name | Manufacturer or distributor name |
 | Unit of Measure | `inches` or `mm` — all output values will use this unit |
 
-### 5. Run
+A sample input file is included in the repo.
+
+### 7. Run
 
 ```bash
 python main.py
@@ -160,16 +185,17 @@ A 1.5-second delay is inserted between consecutive DuckDuckGo search queries to 
 
 ```
 PartClassifier/
-├── main.py                    # Entry point — orchestrates the full pipeline
-├── requirements.txt
-├── .env                       # GROQ_API_KEY (not committed)
-├── .env.example
+├── main.py                    # Entry point -- orchestrates the full pipeline
+├── requirements.txt           # Python dependencies
+├── .env.example               # Template for environment variables
+├── .env                       # Your GROQ_API_KEY (git-ignored)
+├── .gitignore
 ├── url_cache.json             # Auto-generated; caches best URL per part number
 ├── input/
-│   └── PartClassifierInput.xlsx
-├── output/
-│   └── *.xlsx                 # One file per part class (auto-generated)
+│   └── PartClassifierInput.xlsx   # Sample input file
+├── output/                    # Auto-generated; one .xlsx per part class
 └── src/
+    ├── __init__.py
     ├── part_classifier.py     # LLM-based part classification
     ├── web_scraper.py         # DuckDuckGo search + curl_cffi scraping
     ├── attribute_extractor.py # LLM-based attribute extraction + unit conversion
@@ -191,7 +217,7 @@ The agent can classify and extract attributes for any part type. The following c
 
 **Pins:** Dowel Pin, Cotter Pin
 
-Other part types are handled with a generic attribute schema.
+Other part types are handled with a generic attribute schema. To add a new class, add its canonical attribute list to `CLASS_SCHEMAS` in `src/attr_schema.py` and any alias variants to `ALIASES`.
 
 ---
 
@@ -200,7 +226,7 @@ Other part types are handled with a generic attribute schema.
 - **Provider:** [Groq](https://groq.com/) — free tier, no credit card required
 - **Model:** `llama-3.3-70b-versatile`
 - **Used for:** Part classification, attribute extraction, unit conversion, part-name parsing
-- **API compatibility:** OpenAI-compatible (uses `openai` Python SDK with a custom base URL)
+- **API compatibility:** OpenAI-compatible (uses `openai` Python SDK with Groq's base URL)
 
 ---
 
@@ -208,4 +234,4 @@ Other part types are handled with a generic attribute schema.
 
 - McMaster-Carr blocks all automated scraping. For McMaster parts, the agent searches for them on trusted distributor mirrors (skdin.com, aftfasteners.com, etc.) which carry the same spec data.
 - The `url_cache.json` file is safe to commit — it only contains public product page URLs and speeds up reruns significantly.
-- The `output/` folder and `mcmaster_session.json` (if present) should be excluded from version control via `.gitignore`.
+- The `output/` folder is git-ignored and regenerated on each run.

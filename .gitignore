@@ -4,9 +4,6 @@
 # Output files (generated on each run)
 output/
 
-# Playwright session (contains login cookies — never commit)
-mcmaster_session.json
-
 # Python
 __pycache__/
 *.py[cod]
