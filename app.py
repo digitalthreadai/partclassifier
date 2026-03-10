@@ -989,3 +989,40 @@ if run_clicked:
         import traceback
         with st.expander("Full error details"):
             st.code(traceback.format_exc())
+
+# -- Footer ----------------------------------------------------------------
+st.markdown("""
+<div class="app-footer">
+    <div class="footer-line"></div>
+    <p>Developed by <strong>Anbarasu M</strong> &nbsp;&middot;&nbsp;
+    <a href="https://digitalthread.ai" target="_blank">digitalthread.ai</a></p>
+</div>
+<style>
+.app-footer {
+    text-align: center;
+    padding: 24px 0 12px;
+    margin-top: 40px;
+}
+.app-footer .footer-line {
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #6366f1, transparent);
+    margin: 0 auto 14px;
+    border-radius: 2px;
+}
+.app-footer p {
+    font-size: 0.78rem;
+    color: #64748b !important;
+    letter-spacing: 0.02em;
+}
+.app-footer a {
+    color: #818cf8 !important;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+.app-footer a:hover {
+    color: #a5b4fc !important;
+}
+</style>
+""", unsafe_allow_html=True)
