@@ -1,0 +1,192 @@
+"""
+Unified LLM client -- supports multiple providers through a single interface.
+
+Providers:
+  - groq       : Groq API (free, fast inference)
+  - openai     : OpenAI API (GPT-4o, GPT-4-turbo, etc.)
+  - anthropic  : Anthropic API (Claude Opus, Sonnet, Haiku)
+  - ollama     : Local Ollama server
+  - custom     : Any OpenAI-compatible API (set LLM_BASE_URL)
+
+Configuration is read from environment variables (or passed explicitly):
+  LLM_PROVIDER  = groq | openai | anthropic | ollama | custom
+  LLM_API_KEY   = your_api_key
+  LLM_MODEL     = model name (optional -- each provider has a sensible default)
+  LLM_BASE_URL  = custom endpoint (only needed for "custom" provider)
+"""
+
+import os
+
+# Provider presets: (base_url, default_model, display_label)
+PROVIDER_PRESETS = {
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "default_model": "llama-3.3-70b-versatile",
+        "label": "Groq",
+        "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+        "needs_key": True,
+        "key_hint": "gsk_...",
+        "key_url": "https://console.groq.com/keys",
+    },
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o",
+        "label": "OpenAI",
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "needs_key": True,
+        "key_hint": "sk-...",
+        "key_url": "https://platform.openai.com/api-keys",
+    },
+    "anthropic": {
+        "base_url": None,
+        "default_model": "claude-sonnet-4-20250514",
+        "label": "Anthropic",
+        "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-5-20251001"],
+        "needs_key": True,
+        "key_hint": "sk-ant-...",
+        "key_url": "https://console.anthropic.com/settings/keys",
+    },
+    "ollama": {
+        "base_url": "http://localhost:11434/v1",
+        "default_model": "llama3.1",
+        "label": "Ollama (local)",
+        "models": ["llama3.1", "llama3.2", "mistral", "gemma2", "qwen2.5"],
+        "needs_key": False,
+        "key_hint": "",
+        "key_url": "",
+    },
+}
+
+SUPPORTED_PROVIDERS = list(PROVIDER_PRESETS.keys()) + ["custom"]
+
+
+class LLMClient:
+    """
+    Unified async LLM client. Call `chat()` with standard OpenAI-style messages.
+    Works with any supported provider -- the caller doesn't need to know which.
+    """
+
+    def __init__(self, provider: str = "", api_key: str = "", model: str = "",
+                 base_url: str = ""):
+        """
+        Create an LLM client. If params are empty, reads from environment variables.
+        Falls back to GROQ_API_KEY for backward compatibility.
+        """
+        self.provider = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
+        self.api_key = (api_key or os.getenv("LLM_API_KEY", "")).strip()
+        self.model = (model or os.getenv("LLM_MODEL", "")).strip()
+        self._base_url = (base_url or os.getenv("LLM_BASE_URL", "")).strip()
+
+        if not self.api_key:
+            # Backwards compatibility: fall back to GROQ_API_KEY
+            self.api_key = os.getenv("GROQ_API_KEY", "").strip()
+            if self.api_key and not self.provider:
+                self.provider = "groq"
+
+        if not self.provider:
+            self.provider = "groq"
+
+        if not self.api_key and self.provider != "ollama":
+            raise ValueError(
+                "LLM_API_KEY not set. "
+                "See README.md for configuration instructions."
+            )
+
+        if self.provider == "anthropic":
+            self._init_anthropic()
+        else:
+            self._init_openai_compat()
+
+    def _init_openai_compat(self):
+        """Initialize for any OpenAI-compatible provider."""
+        from openai import AsyncOpenAI
+
+        if self.provider == "custom":
+            if not self._base_url:
+                raise ValueError("LLM_BASE_URL must be set when LLM_PROVIDER=custom")
+            base_url = self._base_url
+            default_model = "gpt-4o"
+        elif self.provider in PROVIDER_PRESETS:
+            preset = PROVIDER_PRESETS[self.provider]
+            base_url = preset["base_url"]
+            default_model = preset["default_model"]
+        else:
+            raise ValueError(
+                f"Unknown LLM_PROVIDER: '{self.provider}'. "
+                f"Supported: {', '.join(SUPPORTED_PROVIDERS)}"
+            )
+
+        if not self.model:
+            self.model = default_model
+
+        self._client = AsyncOpenAI(
+            base_url=base_url,
+            api_key=self.api_key or "ollama",  # Ollama doesn't need a real key
+        )
+        self._is_anthropic = False
+
+    def _init_anthropic(self):
+        """Initialize for Anthropic (Claude)."""
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError:
+            raise ImportError(
+                "The 'anthropic' package is required for LLM_PROVIDER=anthropic. "
+                "Install it with: pip install anthropic"
+            )
+
+        if not self.model:
+            self.model = PROVIDER_PRESETS["anthropic"]["default_model"]
+
+        self._client = AsyncAnthropic(api_key=self.api_key)
+        self._is_anthropic = True
+
+    async def chat(self, messages: list[dict], max_tokens: int = 1000) -> str:
+        """
+        Send a chat completion request and return the response text.
+
+        Args:
+            messages: List of {"role": "system"|"user"|"assistant", "content": "..."}
+            max_tokens: Maximum tokens in the response.
+
+        Returns:
+            The assistant's response text.
+        """
+        if self._is_anthropic:
+            return await self._chat_anthropic(messages, max_tokens)
+        return await self._chat_openai(messages, max_tokens)
+
+    async def _chat_openai(self, messages: list[dict], max_tokens: int) -> str:
+        response = await self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
+        return response.choices[0].message.content.strip()
+
+    async def _chat_anthropic(self, messages: list[dict], max_tokens: int) -> str:
+        # Anthropic separates the system prompt from messages
+        system_text = ""
+        user_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_text += msg["content"] + "\n"
+            else:
+                user_messages.append(msg)
+
+        kwargs = dict(
+            model=self.model,
+            max_tokens=max_tokens,
+            messages=user_messages,
+        )
+        if system_text.strip():
+            kwargs["system"] = system_text.strip()
+
+        response = await self._client.messages.create(**kwargs)
+        return response.content[0].text.strip()
+
+    def display_name(self) -> str:
+        """Human-readable string for console output."""
+        preset = PROVIDER_PRESETS.get(self.provider)
+        label = preset["label"] if preset else self.provider
+        return f"{self.model} via {label}"

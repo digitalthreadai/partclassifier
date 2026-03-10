@@ -1,13 +1,11 @@
-"""Use GitHub Models (GPT-4o) to extract structured dimensions from raw product content."""
+"""Extract structured dimensions from raw product content using an LLM."""
 
-from openai import AsyncOpenAI
+from src.llm_client import LLMClient
 from src.attr_schema import get_schema, normalize_attrs
 import json
 import re
 
 MAX_CONTENT_CHARS = 8_000
-GROQ_URL = "https://api.groq.com/openai/v1"
-MODEL = "llama-3.3-70b-versatile"
 
 
 def _unit_instructions(unit_of_measure: str) -> tuple[str, str, str]:
@@ -57,21 +55,16 @@ def _parse_json(raw: str) -> dict:
 
 
 class AttributeExtractor:
-    def __init__(self, token: str):
-        self.client = AsyncOpenAI(
-            base_url=GROQ_URL,
-            api_key=token,
-        )
+    def __init__(self, llm: LLMClient):
+        self.llm = llm
 
     async def extract(self, raw_content: str, part_class: str, mfg_part_num: str,
                       part_name: str = "", unit_of_measure: str = "") -> dict[str, str]:
-        """Parse raw page/PDF text and return a dict of attribute -> value."""
+        """Parse raw page text and return a dict of attribute -> value."""
         truncated = raw_content[:MAX_CONTENT_CHARS]
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
 
-        response = await self.client.chat.completions.create(
-            model=MODEL,
-            max_tokens=1_000,
+        raw = await self.llm.chat(
             messages=[
                 {
                     "role": "system",
@@ -93,7 +86,7 @@ class AttributeExtractor:
                         f"{', '.join(get_schema(part_class))}\n"
                         f"Rules:\n"
                         f"  - All dimensional values must be in {unit_short}\n"
-                        f"  - Use the exact attribute names listed above — do NOT invent synonyms\n"
+                        f"  - Use the exact attribute names listed above -- do NOT invent synonyms\n"
                         f"  - Include Material, Hardness, Standard, Washer Type, System of Measurement, "
                         f"Performance if present in the source\n"
                         f"  - Omit attributes not found in the source\n\n"
@@ -103,9 +96,9 @@ class AttributeExtractor:
                     ),
                 },
             ],
+            max_tokens=1_000,
         )
 
-        raw = response.choices[0].message.content.strip()
         result = _parse_json(raw)
         skip_keys = {"part number", "part name", "part no", "part #"}
         cleaned = {
@@ -120,9 +113,7 @@ class AttributeExtractor:
         """Fallback: extract any dimensions encoded in the part name itself."""
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
 
-        response = await self.client.chat.completions.create(
-            model=MODEL,
-            max_tokens=500,
+        raw = await self.llm.chat(
             messages=[
                 {
                     "role": "system",
@@ -142,8 +133,8 @@ class AttributeExtractor:
                     ),
                 },
             ],
+            max_tokens=500,
         )
 
-        raw = response.choices[0].message.content.strip()
         result = _parse_json(raw)
         return normalize_attrs(result, part_class)

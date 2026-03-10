@@ -1,6 +1,21 @@
 # Part Classification Agent
 
-An AI-powered agent that reads a list of mechanical parts from an Excel file, classifies each part by type, scrapes manufacturer/distributor websites for specifications, and writes one structured Excel output file per part class — ready for Teamcenter classification import.
+An AI-powered agent that reads a list of mechanical parts from an Excel file, classifies each part by type, scrapes manufacturer/distributor websites for specifications, and writes one structured Excel output file per part class -- ready for Teamcenter classification import.
+
+The agent can be used via a **Streamlit web UI** or directly from the **command line**.
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/digitalthreadai/partclassifier.git
+cd partclassifier
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Open http://localhost:8501, configure your LLM provider in the sidebar, select your input file, and click **Run Classification**.
 
 ---
 
@@ -25,7 +40,7 @@ Input Excel
                         Manufacturer Name, Unit of Measure
     |
     v
-[PartClassifier] --> calls Groq LLM (llama-3.3-70b)
+[PartClassifier] --> calls LLM (configurable provider + model)
                       classifies part name -> "Split Lock Washer", "Flat Washer", etc.
     |
     v
@@ -35,7 +50,7 @@ Input Excel
               --> caches the winning URL for future runs
     |
     v
-[AttributeExtractor] --> sends scraped text + part class + unit to Groq LLM
+[AttributeExtractor] --> sends scraped text + part class + unit to LLM
                       --> LLM extracts structured attributes using canonical names
                       --> converts all dimensional values to target unit (inches or mm)
                       --> normalizes attribute names via alias mapping
@@ -54,7 +69,7 @@ If no web content is found, the extractor falls back to mining any dimensions en
 ### 1. Prerequisites
 
 - **Python 3.11+** ([python.org](https://www.python.org/downloads/))
-- A free **[Groq](https://console.groq.com/)** account (for the LLM — no billing required)
+- An API key from one of the supported LLM providers (see below)
 - **Git** (optional, for cloning the repo)
 
 ### 2. Clone the repository
@@ -79,27 +94,28 @@ pip install -r requirements.txt
 ```
 
 This installs:
-- `openai` — OpenAI-compatible SDK (used to call Groq API)
-- `openpyxl` — Excel read/write
-- `curl_cffi` — HTTP client with real Chrome TLS fingerprint
-- `beautifulsoup4` — HTML parsing
-- `python-dotenv` — loads `.env` file
+- `openai` -- OpenAI-compatible SDK (used for Groq, OpenAI, Ollama, and custom providers)
+- `anthropic` -- Anthropic SDK (only needed if using Claude models)
+- `openpyxl` -- Excel read/write
+- `curl_cffi` -- HTTP client with real Chrome TLS fingerprint
+- `beautifulsoup4` -- HTML parsing
+- `python-dotenv` -- loads `.env` file
 
-### 5. Configure environment
+### 5. Configure LLM provider
 
-Copy the example env file and add your Groq API key:
+Copy the example env file:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` with your chosen provider. See [LLM Configuration](#llm-configuration) below for all options.
 
+**Quick start with Groq (free):**
 ```
-GROQ_API_KEY=your_groq_api_key_here
+LLM_PROVIDER=groq
+LLM_API_KEY=your_groq_api_key_here
 ```
-
-Get your free API key from: https://console.groq.com/keys
 
 ### 6. Prepare input Excel
 
@@ -117,15 +133,30 @@ Required columns (exact names):
 | Part Name | Descriptive name (used for classification) |
 | Manufacturer Part Number | Used for web search and scraping |
 | Manufacturer Name | Manufacturer or distributor name |
-| Unit of Measure | `inches` or `mm` — all output values will use this unit |
+| Unit of Measure | `inches` or `mm` -- all output values will use this unit |
 
 A sample input file is included in the repo.
 
 ### 7. Run
 
+**Option A: Web UI (recommended)**
+
+```bash
+streamlit run app.py
+```
+
+This opens a browser at http://localhost:8501 with:
+- **Sidebar** -- select LLM provider, enter API key, choose model, and click Save (writes to `.env` automatically)
+- **Main area** -- pick input folder and file, preview data, click **Run Classification**
+- **Results** -- progress bar, per-part breakdown, and download buttons for output files
+
+**Option B: Command line**
+
 ```bash
 python main.py
 ```
+
+Requires `.env` to be configured manually (see [LLM Configuration](#llm-configuration)).
 
 Output files appear in the `output/` folder, one per part class:
 
@@ -139,13 +170,74 @@ output/
 
 ---
 
+## LLM Configuration
+
+The agent supports multiple LLM providers. Configure via three variables in `.env`:
+
+| Variable | Required | Description |
+|---|---|---|
+| `LLM_PROVIDER` | Yes | `groq`, `openai`, `anthropic`, `ollama`, or `custom` |
+| `LLM_API_KEY` | Yes* | API key for your provider (*not needed for Ollama) |
+| `LLM_MODEL` | No | Override the default model for your provider |
+| `LLM_BASE_URL` | No | Custom API endpoint (only for `custom` provider) |
+
+### Provider Examples
+
+**Groq (free, recommended for getting started)**
+```env
+LLM_PROVIDER=groq
+LLM_API_KEY=gsk_your_groq_key_here
+```
+Default model: `llama-3.3-70b-versatile` | Get key: https://console.groq.com/keys
+
+**OpenAI (GPT-4o, GPT-4-turbo)**
+```env
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-your_openai_key_here
+LLM_MODEL=gpt-4o
+```
+Default model: `gpt-4o` | Get key: https://platform.openai.com/api-keys
+
+**Anthropic (Claude Opus, Sonnet, Haiku)**
+```env
+LLM_PROVIDER=anthropic
+LLM_API_KEY=sk-ant-your_anthropic_key_here
+LLM_MODEL=claude-sonnet-4-20250514
+```
+Default model: `claude-sonnet-4-20250514` | Get key: https://console.anthropic.com/settings/keys
+
+Other Claude models: `claude-opus-4-20250514`, `claude-haiku-4-5-20251001`
+
+**Ollama (local, free, no API key needed)**
+```env
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3.1
+```
+Default model: `llama3.1` | Install: https://ollama.ai
+
+Make sure Ollama is running (`ollama serve`) and the model is pulled (`ollama pull llama3.1`).
+
+**Custom OpenAI-compatible API**
+```env
+LLM_PROVIDER=custom
+LLM_API_KEY=your_key
+LLM_BASE_URL=https://your-api-endpoint.com/v1
+LLM_MODEL=your-model-name
+```
+
+### Backward Compatibility
+
+If `LLM_PROVIDER` is not set, the agent falls back to reading `GROQ_API_KEY` and using Groq automatically. Existing `.env` files with only `GROQ_API_KEY` will continue to work.
+
+---
+
 ## Output Format
 
 Each output Excel contains:
 
 - All original input columns
-- `Part Class` — the classified category
-- `Source URL` — the web page the attributes were extracted from
+- `Part Class` -- the classified category
+- `Source URL` -- the web page the attributes were extracted from
 - All extracted attribute columns specific to that class
 
 Attribute columns are ordered canonically per class (e.g., Screw Size, Inner Diameter, Outer Diameter, Thickness, Material, Finish, Hardness, Standard, ...).
@@ -155,7 +247,7 @@ Attribute columns are ordered canonically per class (e.g., Screw Size, Inner Dia
 ## Reliability Features
 
 ### URL Caching (`url_cache.json`)
-After the first successful scrape for a part number, the winning URL is saved to `url_cache.json`. On subsequent runs, the agent goes directly to that URL instead of re-searching — making reruns fast and deterministic. To force a fresh search for a part, delete its entry from the cache.
+After the first successful scrape for a part number, the winning URL is saved to `url_cache.json`. On subsequent runs, the agent goes directly to that URL instead of re-searching -- making reruns fast and deterministic. To force a fresh search for a part, delete its entry from the cache.
 
 ### Preferred Source Domains
 The agent prioritizes trusted industrial fastener distributor sites over generic results:
@@ -185,10 +277,11 @@ A 1.5-second delay is inserted between consecutive DuckDuckGo search queries to 
 
 ```
 PartClassifier/
-├── main.py                    # Entry point -- orchestrates the full pipeline
+├── app.py                     # Streamlit web UI
+├── main.py                    # CLI entry point -- orchestrates the full pipeline
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Template for environment variables
-├── .env                       # Your GROQ_API_KEY (git-ignored)
+├── .env                       # Your LLM config (git-ignored)
 ├── .gitignore
 ├── url_cache.json             # Auto-generated; caches best URL per part number
 ├── input/
@@ -196,6 +289,7 @@ PartClassifier/
 ├── output/                    # Auto-generated; one .xlsx per part class
 └── src/
     ├── __init__.py
+    ├── llm_client.py          # Unified LLM client (Groq/OpenAI/Anthropic/Ollama)
     ├── part_classifier.py     # LLM-based part classification
     ├── web_scraper.py         # DuckDuckGo search + curl_cffi scraping
     ├── attribute_extractor.py # LLM-based attribute extraction + unit conversion
@@ -221,17 +315,8 @@ Other part types are handled with a generic attribute schema. To add a new class
 
 ---
 
-## LLM Details
-
-- **Provider:** [Groq](https://groq.com/) — free tier, no credit card required
-- **Model:** `llama-3.3-70b-versatile`
-- **Used for:** Part classification, attribute extraction, unit conversion, part-name parsing
-- **API compatibility:** OpenAI-compatible (uses `openai` Python SDK with Groq's base URL)
-
----
-
 ## Notes
 
 - McMaster-Carr blocks all automated scraping. For McMaster parts, the agent searches for them on trusted distributor mirrors (skdin.com, aftfasteners.com, etc.) which carry the same spec data.
-- The `url_cache.json` file is safe to commit — it only contains public product page URLs and speeds up reruns significantly.
+- The `url_cache.json` file is safe to commit -- it only contains public product page URLs and speeds up reruns significantly.
 - The `output/` folder is git-ignored and regenerated on each run.

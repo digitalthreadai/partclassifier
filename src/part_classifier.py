@@ -1,6 +1,6 @@
-"""Classify a mechanical part into a standard category using GitHub Models."""
+"""Classify a mechanical part into a standard category using an LLM."""
 
-from openai import AsyncOpenAI
+from src.llm_client import LLMClient
 
 KNOWN_CLASSES = [
     "Washer", "Lock Washer", "Split Lock Washer", "Flat Washer",
@@ -18,22 +18,14 @@ KNOWN_CLASSES = [
     "Bracket", "Fitting",
 ]
 
-GROQ_URL = "https://api.groq.com/openai/v1"
-MODEL = "llama-3.3-70b-versatile"
-
 
 class PartClassifier:
-    def __init__(self, token: str):
-        self.client = AsyncOpenAI(
-            base_url=GROQ_URL,
-            api_key=token,
-        )
+    def __init__(self, llm: LLMClient):
+        self.llm = llm
 
     async def classify(self, part_name: str) -> str:
         """Return the part class/category from the part name."""
-        response = await self.client.chat.completions.create(
-            model=MODEL,
-            max_tokens=30,
+        response = await self.llm.chat(
             messages=[
                 {
                     "role": "system",
@@ -48,5 +40,6 @@ class PartClassifier:
                     ),
                 },
             ],
+            max_tokens=30,
         )
-        return response.choices[0].message.content.strip()
+        return response

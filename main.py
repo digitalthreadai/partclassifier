@@ -11,11 +11,10 @@ Usage:
     python main.py
 
 Prerequisites:
-    Copy .env.example to .env and set GROQ_API_KEY.
+    Copy .env.example to .env and configure LLM provider + API key.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -28,7 +27,7 @@ EXCEL_PATH = BASE_DIR / "input" / "PartClassifierInput.xlsx"
 OUTPUT_DIR = BASE_DIR / "output"
 
 
-# ── Per-part processing ───────────────────────────────────────────────────────
+# -- Per-part processing ---------------------------------------------------
 
 async def process_part(
     part: dict,
@@ -47,11 +46,11 @@ async def process_part(
     print(f"  Maker   : {mfg_name}")
     print(f"  Unit    : {unit_of_measure}")
 
-    # 1 ── Classify
+    # 1 -- Classify
     part_class = await classifier.classify(part_name)
     print(f"  Class   : {part_class}")
 
-    # 2 ── Find product page and scrape
+    # 2 -- Find product page and scrape
     print(f"  Searching: {mfg_name} {mfg_part_num} ...")
     raw_content, source_url = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
 
@@ -60,7 +59,7 @@ async def process_part(
     else:
         print(f"  Content : not found - falling back to part name")
 
-    # 3 ── Extract attributes
+    # 3 -- Extract attributes
     if raw_content:
         attributes = await attr_extractor.extract(
             raw_content, part_class, mfg_part_num, part_name, unit_of_measure
@@ -87,26 +86,28 @@ async def process_part(
     }
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main ------------------------------------------------------------------
 
 async def main() -> None:
-    groq_key = os.getenv("GROQ_API_KEY")
-    if not groq_key:
-        print("ERROR: GROQ_API_KEY not set in .env")
-        sys.exit(1)
-
     if not EXCEL_PATH.exists():
         print(f"ERROR: {EXCEL_PATH} not found")
         sys.exit(1)
 
-    from src.excel_handler    import ExcelHandler
-    from src.part_classifier  import PartClassifier
-    from src.web_scraper      import WebScraper
+    from src.llm_client         import LLMClient
+    from src.excel_handler      import ExcelHandler
+    from src.part_classifier    import PartClassifier
+    from src.web_scraper        import WebScraper
     from src.attribute_extractor import AttributeExtractor
 
-    handler      = ExcelHandler(str(EXCEL_PATH), str(OUTPUT_DIR))
-    classifier   = PartClassifier(groq_key)
-    attr_extractor = AttributeExtractor(groq_key)
+    try:
+        llm = LLMClient()
+    except (ValueError, ImportError) as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    handler        = ExcelHandler(str(EXCEL_PATH), str(OUTPUT_DIR))
+    classifier     = PartClassifier(llm)
+    attr_extractor = AttributeExtractor(llm)
 
     parts = handler.read_parts()
 
@@ -114,7 +115,7 @@ async def main() -> None:
     print(f"{'='*60}")
     print(f"  Input  : {EXCEL_PATH.name}  ({len(parts)} parts)")
     print(f"  Output : {OUTPUT_DIR}/")
-    print(f"  Model  : llama-3.3-70b via Groq")
+    print(f"  Model  : {llm.display_name()}")
 
     results: list[dict] = []
     async with WebScraper() as scraper:
