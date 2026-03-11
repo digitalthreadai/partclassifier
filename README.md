@@ -2,11 +2,31 @@
 
 An AI-powered agent that reads a list of mechanical parts from an Excel file, classifies each part by type, scrapes manufacturer/distributor websites for specifications, and writes one structured Excel output file per part class -- ready for Teamcenter classification import.
 
-The agent can be used via a **Streamlit web UI** or directly from the **command line**.
+**Two execution modes:**
+
+| Mode | Entry point | LLM access | Web search | Best for |
+|---|---|---|---|---|
+| **API Key** | `main.py` or `app.py` | Groq / OpenAI / Anthropic / Ollama via API key | DuckDuckGo + curl_cffi | Users with direct API keys |
+| **Claude Code CLI** | `main_cc.py` | `claude` CLI (uses whatever backend is configured) | Claude's built-in WebSearch/WebFetch | Companies with Claude Code on Azure (no API keys needed) |
 
 ---
 
 ## Quick Start
+
+### Option A: Claude Code CLI (no API keys)
+
+If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and configured:
+
+```bash
+git clone https://github.com/digitalthreadai/partclassifier.git
+cd partclassifier
+pip install -r requirements.txt
+python main_cc.py
+```
+
+No `.env` file or API keys needed -- the tool uses your existing Claude Code configuration.
+
+### Option B: API Key mode
 
 ```bash
 git clone https://github.com/digitalthreadai/partclassifier.git
@@ -31,6 +51,8 @@ For each part in the input Excel:
 ---
 
 ## Agent Workflow
+
+### API Key mode (`main.py`)
 
 ```
 Input Excel
@@ -60,7 +82,37 @@ Input Excel
               --> writes one .xlsx per class with consistent column headers
 ```
 
-If no web content is found, the extractor falls back to mining any dimensions encoded in the Part Name itself.
+### Claude Code CLI mode (`main_cc.py`)
+
+```
+Input Excel
+    |
+    v
+[ExcelHandler] --> reads all parts
+    |
+    v
+Phase 1: BATCH CLASSIFICATION (100 parts per claude CLI call)
+    |
+    [ClaudeCodeClient.classify_batch()] --> single `claude -p` call classifies
+                                            up to 100 parts at once (JSON response)
+    |
+    v
+Phase 2: PARALLEL SEARCH + EXTRACT (4 workers by default)
+    |
+    Worker 1 ──┐
+    Worker 2 ──┤ Each worker runs `claude -p --allowedTools WebSearch,WebFetch`
+    Worker 3 ──┤   1. Checks url_cache.json for cached URL → fetch directly
+    Worker 4 ──┘   2. If no cache: searches trusted domains first, then general web
+                   3. Extracts attributes from fetched page (JSON response)
+                   4. Caches the winning URL for future runs
+    |
+    v
+[ExcelHandler] --> groups results by part class
+              --> writes one .xlsx per class with consistent column headers
+              --> intermediate writes every 50 parts
+```
+
+If no web content is found, both modes fall back to mining any dimensions encoded in the Part Name itself.
 
 ---
 
@@ -69,8 +121,9 @@ If no web content is found, the extractor falls back to mining any dimensions en
 ### 1. Prerequisites
 
 - **Python 3.11+** ([python.org](https://www.python.org/downloads/))
-- An API key from one of the supported LLM providers (see below)
 - **Git** (optional, for cloning the repo)
+- **For API Key mode:** An API key from one of the supported LLM providers (see [LLM Configuration](#llm-configuration))
+- **For Claude Code CLI mode:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and configured (no API key needed)
 
 ### 2. Clone the repository
 
@@ -150,13 +203,37 @@ This opens a browser at http://localhost:8501 with:
 - **Main area** -- pick input folder and file, preview data, click **Run Classification**
 - **Results** -- progress bar, per-part breakdown, and download buttons for output files
 
-**Option B: Command line**
+**Option B: Command line (API key)**
 
 ```bash
 python main.py
 ```
 
 Requires `.env` to be configured manually (see [LLM Configuration](#llm-configuration)).
+
+**Option C: Claude Code CLI (no API keys)**
+
+```bash
+python main_cc.py                    # 4 parallel workers, auto-resumes
+python main_cc.py --workers 8        # 8 parallel workers (faster)
+python main_cc.py --fresh            # ignore previous progress, start over
+python main_cc.py --workers 1        # sequential mode (for debugging)
+```
+
+No `.env` file needed. Uses whatever LLM backend your Claude Code is configured with (Azure, Anthropic, etc.). The `claude` CLI must be installed and on your PATH.
+
+**Claude Code CLI features for large batches (1,000 – 20,000+ parts):**
+
+| Feature | Description |
+|---|---|
+| **Batch classification** | Classifies up to 100 parts per CLI call instead of 1 |
+| **Parallel workers** | N concurrent search+extract workers (default 4) |
+| **Resume capability** | Saves progress to `progress_cc.json` after each part. If interrupted, re-run to resume where you left off. |
+| **Per-part error isolation** | One failed part doesn't stop the batch |
+| **Periodic Excel writes** | Output files updated every 50 parts |
+| **URL cache** | Reuses previously found URLs -- re-runs are dramatically faster |
+| **Trusted domain enforcement** | Prioritizes known-good distributor sites before general web search |
+| **Ctrl+C safe** | Saves progress and writes partial output on interrupt |
 
 Output files appear in the `output/` folder, one per part class:
 
@@ -277,21 +354,24 @@ A 1.5-second delay is inserted between consecutive DuckDuckGo search queries to 
 
 ```
 PartClassifier/
-├── app.py                     # Streamlit web UI
-├── main.py                    # CLI entry point -- orchestrates the full pipeline
+├── app.py                     # Streamlit web UI (API key mode)
+├── main.py                    # CLI entry point -- API key mode
+├── main_cc.py                 # CLI entry point -- Claude Code CLI mode (no API keys)
 ├── requirements.txt           # Python dependencies
-├── .env.example               # Template for environment variables
-├── .env                       # Your LLM config (git-ignored)
+├── .env.example               # Template for environment variables (API key mode only)
+├── .env                       # Your LLM config (git-ignored, API key mode only)
 ├── .gitignore
-├── url_cache.json             # Auto-generated; caches best URL per part number
+├── url_cache.json             # Auto-generated; caches best URL per part number (shared)
+├── progress_cc.json           # Auto-generated; resume state for main_cc.py (deleted on completion)
 ├── input/
 │   └── PartClassifierInput.xlsx   # Sample input file
 ├── output/                    # Auto-generated; one .xlsx per part class
 └── src/
     ├── __init__.py
-    ├── llm_client.py          # Unified LLM client (Groq/OpenAI/Anthropic/Ollama)
-    ├── part_classifier.py     # LLM-based part classification
-    ├── web_scraper.py         # DuckDuckGo search + curl_cffi scraping
+    ├── llm_client.py          # Unified LLM client (Groq/OpenAI/Anthropic/Ollama) -- API key mode
+    ├── claude_code_client.py  # Claude Code CLI wrapper -- Claude Code CLI mode
+    ├── part_classifier.py     # LLM-based part classification -- API key mode
+    ├── web_scraper.py         # DuckDuckGo search + curl_cffi scraping -- API key mode
     ├── attribute_extractor.py # LLM-based attribute extraction + unit conversion
     ├── attr_schema.py         # Canonical attribute names + alias normalization
     └── excel_handler.py       # Input reader + per-class output writer
@@ -318,5 +398,7 @@ Other part types are handled with a generic attribute schema. To add a new class
 ## Notes
 
 - McMaster-Carr blocks all automated scraping. For McMaster parts, the agent searches for them on trusted distributor mirrors (skdin.com, aftfasteners.com, etc.) which carry the same spec data.
-- The `url_cache.json` file is safe to commit -- it only contains public product page URLs and speeds up reruns significantly.
+- The `url_cache.json` file is safe to commit -- it only contains public product page URLs and speeds up reruns significantly. It is shared between both execution modes.
 - The `output/` folder is git-ignored and regenerated on each run.
+- The `progress_cc.json` file is auto-generated by `main_cc.py` for resume support. It is automatically deleted when all parts complete successfully. Do not commit it.
+- **Claude Code CLI mode** does not require `openai`, `anthropic`, `curl_cffi`, `beautifulsoup4`, or `python-dotenv` -- it only needs `openpyxl` (for Excel I/O) and the `claude` CLI on PATH.
