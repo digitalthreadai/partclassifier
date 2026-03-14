@@ -2,6 +2,9 @@
 Web scraper using curl_cffi (real browser TLS fingerprint) + DuckDuckGo search.
 Strategy: search for the MFG part number, scrape the best result page.
 No Playwright needed — curl_cffi handles bot-detection at the TLS level.
+
+Distributor APIs (DigiKey, Mouser, McMaster) are tried first when configured.
+Falls back to DuckDuckGo web scraping if no API returns sufficient data.
 """
 
 import urllib.parse
@@ -11,6 +14,15 @@ import time
 from pathlib import Path
 from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
+
+from src.api_sources import SourceResult, get_api_sources
+
+# Optional stealth browser for bot-protected sites (McMaster-Carr, etc.)
+try:
+    from src.stealth_scraper import StealthScraper, stealth_available
+    _HAS_STEALTH = stealth_available()
+except ImportError:
+    _HAS_STEALTH = False
 
 MIN_USEFUL_CHARS = 400
 MAX_CONTENT_CHARS = 10_000
@@ -41,27 +53,69 @@ class WebScraper:
     def __init__(self):
         self._session = cffi_requests.Session(impersonate="chrome124")
         self._cache = _load_cache()
+        self._api_sources = get_api_sources()
+        self._stealth: StealthScraper | None = None
+        if _HAS_STEALTH:
+            print("  [Stealth] CloakBrowser available (will launch on first use)")
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *args):
         self._session.close()
+        if self._stealth:
+            await self._stealth.close()
+
+    async def _ensure_stealth(self) -> StealthScraper | None:
+        """Lazily launch the stealth browser on first use."""
+        if not _HAS_STEALTH:
+            return None
+        if self._stealth is None:
+            self._stealth = StealthScraper()
+            await self._stealth.launch()
+        return self._stealth
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    async def find_and_scrape(self, mfg_name: str, mfg_part_num: str, unit: str = "") -> tuple[str | None, str | None]:
+    async def find_and_scrape(self, mfg_name: str, mfg_part_num: str, unit: str = "") -> SourceResult:
         """
-        Search DuckDuckGo for the part number and scrape the best result.
-        Returns (content, source_url) or (None, None).
+        Look up a part: try distributor APIs first, then DuckDuckGo web scraping.
+        Returns a SourceResult with structured attributes and/or raw text.
         """
+        # --- Try API sources first ---
+        for source in self._api_sources:
+            try:
+                result = await source.search(mfg_name, mfg_part_num, unit)
+                if result and result.attributes and len(result.attributes) >= 3:
+                    print(f"    Source ({result.source_name}): {result.source_url}")
+                    self._cache[mfg_part_num] = result.source_url
+                    _save_cache(self._cache)
+                    return result
+            except Exception as e:
+                print(f"    {source.name} error: {e}")
+
+        # --- Try stealth browser for manufacturers with known direct URLs ---
+        if _HAS_STEALTH:
+            direct_url = _direct_part_url(mfg_name, mfg_part_num)
+            if direct_url:
+                stealth = await self._ensure_stealth()
+                if stealth:
+                    result = await stealth.scrape_direct_url(direct_url, label=mfg_name)
+                    if result and result.content and len(result.content) >= MIN_USEFUL_CHARS:
+                        print(f"    Source (stealth/{mfg_name}): {result.source_url}")
+                        self._cache[mfg_part_num] = result.source_url
+                        _save_cache(self._cache)
+                        return result
+                    else:
+                        print(f"    Stealth direct scrape insufficient, continuing...")
+
         # --- Cache hit: reuse previously found URL ---
         if mfg_part_num in self._cache:
             cached_url = self._cache[mfg_part_num]
             content = self._scrape_url(cached_url)
             if content and len(content) >= MIN_USEFUL_CHARS:
                 print(f"    Source (cached): {cached_url}")
-                return content, cached_url
+                return SourceResult(content=content, source_url=cached_url, source_name="web")
             else:
                 # Cached URL is dead — remove and re-search
                 print(f"    Cached URL failed, re-searching...")
@@ -97,7 +151,7 @@ class WebScraper:
                 self._cache[mfg_part_num] = url
                 _save_cache(self._cache)
                 print(f"    Source (trusted): {url}  [score={score}]")
-                return content, url
+                return SourceResult(content=content, source_url=url, source_name="web")
             if score > best_score:
                 best_score, best_content, best_url = score, content, url
 
@@ -106,9 +160,21 @@ class WebScraper:
             _save_cache(self._cache)
             reliability = "(trusted)" if _is_preferred(best_url) else "(unverified)"
             print(f"    Source {reliability}: {best_url}  [score={best_score}]")
-            return best_content, best_url
+            return SourceResult(content=best_content, source_url=best_url, source_name="web")
 
-        return None, None
+        # --- Stealth fallback: search + scrape via browser when curl_cffi found nothing ---
+        if _HAS_STEALTH:
+            stealth = await self._ensure_stealth()
+            if stealth:
+                query = f"{mfg_name} {mfg_part_num} specifications"
+                result = await stealth.search_and_scrape(query, mfg_name=mfg_name)
+                if result and result.content and len(result.content) >= MIN_USEFUL_CHARS:
+                    print(f"    Source (stealth/{mfg_name}): {result.source_url}")
+                    self._cache[mfg_part_num] = result.source_url
+                    _save_cache(self._cache)
+                    return result
+
+        return SourceResult(source_name="none")
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -164,6 +230,24 @@ class WebScraper:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+# Manufacturers with known direct part URL patterns.
+# Add new entries as you discover them — the stealth browser will navigate directly.
+DIRECT_URL_PATTERNS: dict[str, str] = {
+    "mcmaster": "https://www.mcmaster.com/{part}",
+    "fastenal": "https://www.fastenal.com/product/{part}",
+    "grainger": "https://www.grainger.com/search?searchQuery={part}",
+}
+
+
+def _direct_part_url(mfg_name: str, part_number: str) -> str | None:
+    """Return a direct URL for a manufacturer, or None if not mapped."""
+    name_lower = mfg_name.lower()
+    for key, pattern in DIRECT_URL_PATTERNS.items():
+        if key in name_lower:
+            return pattern.format(part=part_number)
+    return None
+
 
 def _build_queries(mfg_name: str, mfg_part_num: str, unit: str = "") -> list[str]:
     """Return ordered list of search queries to try, preferring the requested unit system."""

@@ -35,6 +35,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import asyncio
+
 BASE_DIR      = Path(__file__).parent
 EXCEL_PATH    = BASE_DIR / "input" / "PartClassifierInput.xlsx"
 OUTPUT_DIR    = BASE_DIR / "output"
@@ -168,8 +170,18 @@ def batch_classify(client, pending: list[tuple[int, dict]]) -> dict[str, str]:
 
 # ── Phase 2: Per-part search + extract ────────────────────────────────────────
 
+def _run_async(coro):
+    """Run an async coroutine from synchronous/threaded code."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 def process_part(
-    part: dict, client, index: int, total: int, part_class: str
+    part: dict, client, index: int, total: int, part_class: str,
+    api_sources: list | None = None,
 ) -> dict:
     """Process a single part: search+extract (classification already done)."""
     mfg_part_num    = str(part.get("Manufacturer Part Number") or "").strip()
@@ -187,13 +199,30 @@ def process_part(
         f"  Class   : {part_class}"
     )
 
-    # Search web + extract attributes (with cache + trusted domain priority)
-    safe_print(f"  [{index}/{total}] Searching: {mfg_name} {mfg_part_num} ...")
-    attributes, source_url = client.search_and_extract(
-        mfg_name, mfg_part_num, part_class, part_name, unit_of_measure
-    )
+    # Try distributor APIs first (DigiKey, Mouser, McMaster) if configured
+    from src.attr_schema import normalize_attrs
+    attributes = {}
+    source_url = ""
 
-    # Fallback if search yielded nothing
+    for source in (api_sources or []):
+        try:
+            result = _run_async(source.search(mfg_name, mfg_part_num, unit_of_measure))
+            if result and result.attributes and len(result.attributes) >= 3:
+                attributes = normalize_attrs(result.attributes, part_class)
+                source_url = result.source_url or ""
+                safe_print(f"  [{index}/{total}] Source ({result.source_name}): {source_url}")
+                break
+        except Exception as e:
+            safe_print(f"  [{index}/{total}] {source.name} error: {e}")
+
+    # Fall back to Claude CLI web search if APIs didn't find it
+    if not attributes:
+        safe_print(f"  [{index}/{total}] Searching: {mfg_name} {mfg_part_num} ...")
+        attributes, source_url = client.search_and_extract(
+            mfg_name, mfg_part_num, part_class, part_name, unit_of_measure
+        )
+
+    # Fallback if nothing found at all
     if not attributes:
         safe_print(f"  [{index}/{total}] Web search returned nothing — falling back to part name")
         source_url = "part name"
@@ -239,12 +268,15 @@ def main() -> None:
 
     from src.claude_code_client import ClaudeCodeClient
     from src.excel_handler      import ExcelHandler
+    from src.api_sources        import get_api_sources
 
     try:
         client = ClaudeCodeClient()
     except RuntimeError as e:
         safe_print(f"ERROR: {e}")
         sys.exit(1)
+
+    api_sources = get_api_sources()
 
     handler = ExcelHandler(str(EXCEL_PATH), str(OUTPUT_DIR))
     parts   = handler.read_parts()
@@ -308,7 +340,7 @@ def main() -> None:
         part_class = classifications.get(key, "Unclassified")
 
         try:
-            result = process_part(part, client, index, total, part_class)
+            result = process_part(part, client, index, total, part_class, api_sources)
             count = tracker.save_result(key, result)
         except Exception as e:
             safe_print(f"  [{index}/{total}] ERROR: {e}")

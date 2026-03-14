@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartClassifier Documentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0A0F;
+  --surface: #12121A;
+  --surface-hover: #1E1E2E;
+  --terminal-bg: #1A1A2E;
+  --terminal-border: #2A2A3E;
+  --text: #E8E8ED;
+  --muted: #8888A0;
+  --muted-fg: #6E6E88;
+  --primary: #FFD600;
+  --primary-light: #FFFDE7;
+  --secondary: #60A5FA;
+  --green: #4ADE80;
+  --blue: #60A5FA;
+  --purple: #A78BFA;
+  --red: #F87171;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.6;
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 2rem;
+}
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hub { max-width: 900px; width: 100%; text-align: center; }
+.hub h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 900; margin-bottom: 0.5rem; }
+.hub .subtitle { color: var(--muted); font-size: 1.1rem; margin-bottom: 3rem; }
+.hub .badge { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--primary); margin-bottom: 1rem; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
+.card {
+  background: var(--surface); border: 1px solid var(--terminal-border);
+  border-radius: 16px; padding: 2rem 1.5rem; text-align: left;
+  transition: all 0.25s; text-decoration: none; color: inherit; display: block;
+}
+.card:hover { border-color: rgba(255,214,0,0.3); transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
+.card .icon { font-size: 2rem; margin-bottom: 1rem; }
+.card h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem; }
+.card p { font-size: 0.88rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
+.card .link { color: var(--primary); font-size: 0.85rem; font-weight: 600; }
+.footer { margin-top: 3rem; color: var(--muted-fg); font-size: 0.8rem; }
+.footer a { color: var(--muted); text-decoration: none; }
+.footer a:hover { color: var(--primary); }
+@media (max-width: 480px) { .card-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="hub">
+  <div class="badge">Documentation</div>
+  <h1><span class="gradient-text">PartClassifier</span></h1>
+  <p class="subtitle">AI-powered mechanical parts classification agent for industrial engineering teams</p>
+
+  <div class="card-grid">
+    <a class="card" href="README.html">
+      <div class="icon">&#128218;</div>
+      <h3>Project Overview</h3>
+      <p>Stack, features, quick start guide, project structure, and execution modes.</p>
+      <span class="link">Open &rarr;</span>
+    </a>
+    <a class="card" href="COO.html">
+      <div class="icon">&#128202;</div>
+      <h3>Strategy & Features</h3>
+      <p>Vision, feature map, tech stack, database schema, roadmap, and file structure.</p>
+      <span class="link">Open &rarr;</span>
+    </a>
+    <a class="card" href="SITECONFIGURATIONS.html">
+      <div class="icon">&#9881;</div>
+      <h3>Setup Guide</h3>
+      <p>Step-by-step configuration for LLM providers, distributor APIs, and deployment.</p>
+      <span class="link">Open &rarr;</span>
+    </a>
+  </div>
+
+  <div class="footer">
+    <p>PartClassifier &middot; <a href="https://github.com/digitalthreadai/partclassifier">GitHub</a> &middot; Built by Digital Thread AI</p>
+  </div>
+</div>
+</body>
+</html>

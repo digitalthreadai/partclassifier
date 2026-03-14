@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartClassifier - Strategy & Features</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0A0F; --surface: #12121A; --surface-hover: #1E1E2E;
+  --terminal-bg: #1A1A2E; --terminal-border: #2A2A3E;
+  --text: #E8E8ED; --muted: #8888A0; --muted-fg: #6E6E88;
+  --primary: #FFD600; --primary-light: #FFFDE7; --secondary: #60A5FA;
+  --green: #4ADE80; --blue: #60A5FA; --purple: #A78BFA; --red: #F87171;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+.gradient-text { background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* Sidebar */
+.sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; background: var(--surface); border-right: 1px solid var(--terminal-border); padding: 1.5rem 0; overflow-y: auto; z-index: 100; }
+.sidebar .logo { padding: 0 1.25rem 1.5rem; font-size: 1rem; font-weight: 800; }
+.sidebar .nav-label { padding: 0.5rem 1.25rem 0.25rem; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted-fg); }
+.sidebar nav a { display: block; padding: 0.4rem 1.25rem; color: var(--muted); text-decoration: none; font-size: 0.85rem; border-left: 2px solid transparent; transition: all 0.15s; }
+.sidebar nav a:hover { color: var(--text); }
+.sidebar nav a.active { color: var(--primary); border-left-color: var(--primary); background: rgba(255,214,0,0.05); }
+.sidebar .footer-links { position: absolute; bottom: 0; left: 0; right: 0; padding: 1rem 1.25rem; border-top: 1px solid var(--terminal-border); font-size: 0.75rem; }
+.sidebar .footer-links a { display: inline; padding: 0; border: none; color: var(--muted-fg); margin-right: 0.75rem; }
+.sidebar .footer-links a:hover { color: var(--primary); }
+.main { margin-left: 260px; }
+
+/* Sections */
+section { padding: 4rem 2.5rem; max-width: 960px; }
+.section-label { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--primary); margin-bottom: 0.75rem; }
+.section-title { font-size: clamp(1.5rem, 3vw, 2.25rem); font-weight: 800; margin-bottom: 0.5rem; }
+.section-desc { color: var(--muted); font-size: 0.95rem; margin-bottom: 2.5rem; max-width: 600px; }
+
+/* Hero Banner */
+.hero-banner { padding: 5rem 2.5rem 3rem; background: linear-gradient(135deg, rgba(255,214,0,0.03), rgba(96,165,250,0.03)); border-bottom: 1px solid var(--terminal-border); }
+.hero-banner h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 900; margin-bottom: 0.75rem; }
+.hero-banner p { color: var(--muted); font-size: 1.05rem; max-width: 600px; }
+
+/* Vision */
+.vision-card { background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 14px; padding: 2rem; margin-bottom: 1.5rem; border-left: 3px solid var(--primary); }
+.vision-card p { color: var(--muted); font-size: 0.95rem; line-height: 1.7; }
+
+/* Tables */
+.styled-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--terminal-border); margin-bottom: 2rem; }
+.styled-table th { text-align: left; padding: 0.75rem 1rem; background: var(--terminal-bg); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--terminal-border); }
+.styled-table td { padding: 0.7rem 1rem; border-bottom: 1px solid rgba(42,42,62,0.5); font-size: 0.88rem; }
+.styled-table tr:last-child td { border-bottom: none; }
+.styled-table tr:hover td { background: var(--surface-hover); }
+.styled-table code { background: var(--terminal-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.78rem; }
+
+/* Accordion */
+.accordion-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 10px; cursor: pointer; font-weight: 700; margin-bottom: 0.5rem; transition: all 0.2s; }
+.accordion-header:hover { border-color: rgba(255,214,0,0.3); }
+.accordion-header .count { font-size: 0.75rem; color: var(--muted); font-weight: 500; margin-left: auto; margin-right: 1rem; }
+.accordion-header .arrow { transition: transform 0.2s; color: var(--muted); font-size: 0.75rem; }
+.accordion-header.open .arrow { transform: rotate(180deg); }
+.accordion-body { display: none; padding: 0.5rem 0 1rem; }
+.accordion-body.open { display: block; }
+.feature-item { background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 0.5rem; }
+.feature-item strong { font-size: 0.92rem; }
+.feature-item .route { color: var(--blue); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; }
+.feature-item span { display: block; font-size: 0.82rem; color: var(--muted); margin-top: 0.25rem; }
+
+/* Cards */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 2rem; }
+.card { background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 10px; padding: 1rem; }
+.card .label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-fg); }
+.card h3 { font-size: 0.95rem; font-weight: 700; margin: 0.15rem 0; }
+.card .version { display: inline-block; font-size: 0.68rem; font-weight: 600; background: rgba(255,214,0,0.1); color: var(--primary); padding: 0.1rem 0.4rem; border-radius: 4px; }
+
+/* Timeline */
+.timeline { display: flex; gap: 0; position: relative; margin: 2rem 0; overflow-x: auto; }
+.timeline::before { content: ''; position: absolute; top: 24px; left: 0; right: 0; height: 3px; background: var(--terminal-border); }
+.timeline-node { flex: 1; text-align: center; position: relative; padding-top: 3.5rem; min-width: 140px; }
+.timeline-node::before { content: ''; position: absolute; top: 16px; left: 50%; width: 16px; height: 16px; border-radius: 50%; background: var(--primary); transform: translateX(-50%); box-shadow: 0 0 12px rgba(255,214,0,0.3); }
+.timeline-node.done::before { background: var(--green); box-shadow: 0 0 12px rgba(74,222,128,0.3); }
+.timeline-node .phase { font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.timeline-node .milestone { font-size: 0.85rem; font-weight: 600; margin-top: 0.25rem; }
+.timeline-node .status { font-size: 0.72rem; color: var(--muted-fg); margin-top: 0.15rem; }
+
+/* File tree */
+.file-tree { background: var(--terminal-bg); border: 1px solid var(--terminal-border); border-radius: 12px; padding: 1.5rem; font-size: 0.82rem; line-height: 1.7; }
+.file-tree .dir { color: var(--primary); font-weight: 600; cursor: pointer; }
+.file-tree .file { color: var(--text); }
+.file-tree .comment { color: var(--muted-fg); margin-left: 0.75rem; }
+.tree-children { padding-left: 1.25rem; }
+.tree-children.collapsed { display: none; }
+
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; } section, .hero-banner { padding-left: 1.5rem; padding-right: 1.5rem; } }
+@media (max-width: 768px) { .card-grid { grid-template-columns: 1fr 1fr; } .timeline { flex-direction: column; } .timeline::before { display: none; } .timeline-node { padding-top: 0; padding-left: 2.5rem; text-align: left; margin-bottom: 1.5rem; } .timeline-node::before { left: 0; top: 0; } }
+@media (max-width: 480px) { .card-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo"><span class="gradient-text">PartClassifier</span></div>
+  <div class="nav-label">Strategy</div>
+  <nav>
+    <a href="#vision">Vision</a>
+    <a href="#landscape">Competitive Landscape</a>
+    <a href="#features">Feature Map</a>
+  </nav>
+  <div class="nav-label">Technical</div>
+  <nav>
+    <a href="#stack">Tech Stack</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#structure">File Structure</a>
+  </nav>
+  <div class="footer-links">
+    <a href="index.html">Hub</a>
+    <a href="README.html">Overview</a>
+    <a href="SITECONFIGURATIONS.html">Setup</a>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- Hero Banner -->
+<div class="hero-banner">
+  <div class="section-label">Strategy & Features</div>
+  <h1><span class="gradient-text">PartClassifier</span></h1>
+  <p>AI-powered mechanical parts classification agent for industrial engineering teams managing large fastener inventories.</p>
+</div>
+
+<!-- Vision -->
+<section id="vision">
+  <div class="section-label">Vision</div>
+  <h2 class="section-title">Why PartClassifier</h2>
+  <div class="vision-card">
+    <p>Industrial engineering teams spend hours manually looking up part specifications from distributor websites, extracting dimensions and materials, and preparing classification data for PLM systems. PartClassifier automates this entire workflow -- combining LLM intelligence with multi-source data retrieval to process thousands of parts with minimal human intervention.</p>
+  </div>
+  <div class="vision-card" style="border-left-color: var(--secondary);">
+    <p>The agent bridges the gap between unstructured part catalogs and structured PLM classification systems like Teamcenter. It handles the full pipeline: classification, spec lookup (APIs + web scraping + stealth browser), attribute extraction with unit conversion, and per-class Excel output with canonical column names.</p>
+  </div>
+</section>
+
+<!-- Competitive Landscape -->
+<section id="landscape">
+  <div class="section-label">Landscape</div>
+  <h2 class="section-title">Competitive Analysis</h2>
+  <table class="styled-table">
+    <thead><tr><th>Approach</th><th>Strength</th><th>Weakness</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Manual lookup</strong></td><td>Accurate, human-verified</td><td>Extremely slow (2-5 min/part)</td></tr>
+      <tr><td><strong>Generic scrapers</strong></td><td>Fast, programmable</td><td>Blocked by bot detection</td></tr>
+      <tr><td><strong>PLM vendor tools</strong></td><td>Integrated with Teamcenter</td><td>Expensive, limited catalog</td></tr>
+      <tr><td><strong style="color:var(--primary)">PartClassifier</strong></td><td>AI-driven, multi-source, self-classifying</td><td>Requires LLM access</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="section-label">Capabilities</div>
+  <h2 class="section-title">Feature Map</h2>
+  <p class="section-desc">10 integrated features across the classification pipeline, execution modes, and infrastructure.</p>
+
+  <div class="accordion-header open" onclick="toggleAccordion(this)">
+    Core Pipeline <span class="count">6 features</span> <span class="arrow">&#9660;</span>
+  </div>
+  <div class="accordion-body open">
+    <div class="feature-item"><strong>AI Part Classification</strong> <span class="route">src/part_classifier.py</span><span>LLM classifies parts into 20+ categories. Configurable provider (Groq, OpenAI, Anthropic, Ollama).</span></div>
+    <div class="feature-item"><strong>Multi-Source Spec Lookup</strong> <span class="route">src/web_scraper.py + src/api_sources.py</span><span>Priority: APIs &rarr; Stealth Browser &rarr; Cache &rarr; DuckDuckGo &rarr; Stealth Fallback</span></div>
+    <div class="feature-item"><strong>Attribute Extraction</strong> <span class="route">src/attribute_extractor.py</span><span>LLM extracts structured key-value attributes with automatic unit conversion (in &harr; mm).</span></div>
+    <div class="feature-item"><strong>Canonical Normalization</strong> <span class="route">src/attr_schema.py</span><span>120+ alias mappings normalize naming variants to canonical column names per class.</span></div>
+    <div class="feature-item"><strong>Per-Class Excel Output</strong> <span class="route">src/excel_handler.py</span><span>Groups parts by type, writes one .xlsx per class with styled headers and auto-sized columns.</span></div>
+    <div class="feature-item"><strong>URL Caching</strong> <span class="route">url_cache.json</span><span>Shared across all modes. Cache-hit path skips search. Dead URLs auto-removed.</span></div>
+  </div>
+
+  <div class="accordion-header" onclick="toggleAccordion(this)">
+    Execution Modes <span class="count">3 modes</span> <span class="arrow">&#9660;</span>
+  </div>
+  <div class="accordion-body">
+    <div class="feature-item"><strong>Streamlit Web UI</strong> <span class="route">app.py</span><span>Interactive config, file picker, live progress, per-part results, download buttons.</span></div>
+    <div class="feature-item"><strong>API Key CLI</strong> <span class="route">main.py</span><span>Sequential processing. Configure LLM via .env. Best for small batches.</span></div>
+    <div class="feature-item"><strong>Claude Code CLI</strong> <span class="route">main_cc.py</span><span>Zero API keys. Batch classify 100/call. Parallel workers. Auto-resume. Best for 1K-20K+ parts.</span></div>
+  </div>
+
+  <div class="accordion-header" onclick="toggleAccordion(this)">
+    Infrastructure <span class="count">4 features</span> <span class="arrow">&#9660;</span>
+  </div>
+  <div class="accordion-body">
+    <div class="feature-item"><strong>Distributor APIs</strong> <span class="route">src/api_sources.py</span><span>DigiKey (OAuth2), Mouser (API key), McMaster (mTLS). Structured data bypasses LLM extraction.</span></div>
+    <div class="feature-item"><strong>CloakBrowser Stealth</strong> <span class="route">src/stealth_scraper.py</span><span>Custom Chromium with 33 C++ patches. Bypasses Cloudflare, reCAPTCHA, FingerprintJS.</span></div>
+    <div class="feature-item"><strong>curl_cffi TLS Stealth</strong> <span class="route">src/web_scraper.py</span><span>Chrome 124 JA3/JA4 fingerprint impersonation for basic bot detection bypass.</span></div>
+    <div class="feature-item"><strong>Spec Scoring Algorithm</strong> <span class="route">src/web_scraper.py</span><span>Keyword density scoring + exact part number bonus. Trusted domains prioritized.</span></div>
+  </div>
+</section>
+
+<!-- Tech Stack -->
+<section id="stack">
+  <div class="section-label">Technology</div>
+  <h2 class="section-title">Tech Stack</h2>
+  <div class="card-grid">
+    <div class="card"><div class="label">Language</div><h3>Python</h3><span class="version">3.11+</span></div>
+    <div class="card"><div class="label">LLM SDK</div><h3>OpenAI</h3><span class="version">&ge;1.40.0</span></div>
+    <div class="card"><div class="label">LLM SDK</div><h3>Anthropic</h3><span class="version">&ge;0.40.0</span></div>
+    <div class="card"><div class="label">HTTP</div><h3>curl_cffi</h3><span class="version">&ge;0.7.0</span></div>
+    <div class="card"><div class="label">HTTP</div><h3>httpx</h3><span class="version">&ge;0.27.0</span></div>
+    <div class="card"><div class="label">Browser</div><h3>CloakBrowser</h3><span class="version">&ge;0.3.0</span></div>
+    <div class="card"><div class="label">Parsing</div><h3>BeautifulSoup4</h3><span class="version">&ge;4.12.0</span></div>
+    <div class="card"><div class="label">Excel</div><h3>openpyxl</h3><span class="version">&ge;3.1.0</span></div>
+    <div class="card"><div class="label">Web UI</div><h3>Streamlit</h3><span class="version">&ge;1.38.0</span></div>
+    <div class="card"><div class="label">Config</div><h3>python-dotenv</h3><span class="version">&ge;1.0.0</span></div>
+  </div>
+</section>
+
+<!-- Roadmap -->
+<section id="roadmap">
+  <div class="section-label">Progress</div>
+  <h2 class="section-title">Roadmap</h2>
+  <div class="timeline">
+    <div class="timeline-node done"><div class="phase">v1.0</div><div class="milestone">Core Pipeline</div><div class="status">Done</div></div>
+    <div class="timeline-node done"><div class="phase">v1.1</div><div class="milestone">Multi-LLM + Web UI</div><div class="status">Done</div></div>
+    <div class="timeline-node done"><div class="phase">v1.2</div><div class="milestone">Distributor APIs</div><div class="status">Done</div></div>
+    <div class="timeline-node done"><div class="phase">v1.3</div><div class="milestone">Claude CLI + Batch</div><div class="status">Done</div></div>
+    <div class="timeline-node done"><div class="phase">v1.4</div><div class="milestone">CloakBrowser</div><div class="status">Done</div></div>
+    <div class="timeline-node"><div class="phase">v2.0</div><div class="milestone">Teamcenter Import</div><div class="status">Planned</div></div>
+  </div>
+</section>
+
+<!-- File Structure -->
+<section id="structure">
+  <div class="section-label">Architecture</div>
+  <h2 class="section-title">File Structure</h2>
+  <div class="file-tree">
+    <div style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">PartClassifier/</span></div>
+    <div class="tree-children">
+      <div><span class="file">main.py</span> <span class="comment">API key mode CLI (139 lines)</span></div>
+      <div><span class="file">main_cc.py</span> <span class="comment">Claude Code CLI mode (425 lines)</span></div>
+      <div><span class="file">app.py</span> <span class="comment">Streamlit web UI (1,028 lines)</span></div>
+      <div><span class="file">requirements.txt</span> <span class="comment">9 Python dependencies</span></div>
+      <div><span class="file">.env.example</span> <span class="comment">Config template (12 variables)</span></div>
+      <div style="cursor:pointer;margin-top:0.3rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">src/</span></div>
+      <div class="tree-children">
+        <div><span class="file">llm_client.py</span> <span class="comment">Unified LLM client (192 lines)</span></div>
+        <div><span class="file">claude_code_client.py</span> <span class="comment">Claude CLI wrapper (518 lines)</span></div>
+        <div><span class="file">part_classifier.py</span> <span class="comment">LLM classification (45 lines)</span></div>
+        <div><span class="file">web_scraper.py</span> <span class="comment">Multi-source scraping (341 lines)</span></div>
+        <div><span class="file">stealth_scraper.py</span> <span class="comment">CloakBrowser integration (216 lines)</span></div>
+        <div><span class="file">api_sources.py</span> <span class="comment">DigiKey/Mouser/McMaster (392 lines)</span></div>
+        <div><span class="file">attribute_extractor.py</span> <span class="comment">LLM extraction + units (140 lines)</span></div>
+        <div><span class="file">attr_schema.py</span> <span class="comment">Canonical schemas + aliases (230 lines)</span></div>
+        <div><span class="file">excel_handler.py</span> <span class="comment">Excel read/write (126 lines)</span></div>
+      </div>
+      <div style="cursor:pointer;margin-top:0.3rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">input/</span></div>
+      <div class="tree-children"><div><span class="file">PartClassifierInput.xlsx</span> <span class="comment">Sample (4 parts)</span></div></div>
+      <div style="cursor:pointer;margin-top:0.3rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">output/</span></div>
+      <div class="tree-children"><div><span class="comment">Generated .xlsx per class</span></div></div>
+      <div style="cursor:pointer;margin-top:0.3rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">docs/</span></div>
+      <div class="tree-children">
+        <div><span class="file">index.html</span> <span class="comment">Documentation hub</span></div>
+        <div><span class="file">README.html</span> <span class="comment">Project overview</span></div>
+        <div><span class="file">COO.html</span> <span class="comment">This page</span></div>
+        <div><span class="file">SITECONFIGURATIONS.html</span> <span class="comment">Setup guide</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- .main -->
+
+<script>
+function toggleAccordion(el) { el.classList.toggle('open'); el.nextElementSibling.classList.toggle('open'); }
+const sidebarLinks = document.querySelectorAll('.sidebar nav a');
+const allSections = document.querySelectorAll('section[id]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  allSections.forEach(s => { if (window.scrollY >= s.offsetTop - 120) current = s.id; });
+  sidebarLinks.forEach(a => { a.classList.toggle('active', a.getAttribute('href') === '#' + current); });
+});
+</script>
+</body>
+</html>

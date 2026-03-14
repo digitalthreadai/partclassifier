@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartClassifier - Project Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0A0F; --surface: #12121A; --surface-hover: #1E1E2E;
+  --terminal-bg: #1A1A2E; --terminal-border: #2A2A3E;
+  --text: #E8E8ED; --muted: #8888A0; --muted-fg: #6E6E88;
+  --primary: #FFD600; --primary-light: #FFFDE7; --secondary: #60A5FA;
+  --green: #4ADE80; --blue: #60A5FA; --purple: #A78BFA; --red: #F87171;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+.gradient-text { background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* Hero */
+.hero { min-height: 90vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 4rem 1.5rem 2rem; }
+.hero .badge { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--primary); border: 1px solid rgba(255,214,0,0.2); padding: 0.3rem 0.8rem; border-radius: 20px; margin-bottom: 1.5rem; }
+.hero h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 900; margin-bottom: 1rem; line-height: 1.1; }
+.hero .desc { color: var(--muted); font-size: 1.15rem; max-width: 650px; margin-bottom: 2rem; }
+.hero-btns { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-bottom: 3rem; }
+.btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; border-radius: 10px; font-weight: 600; font-size: 0.95rem; text-decoration: none; transition: all 0.2s; border: none; cursor: pointer; }
+.btn-primary { background: var(--primary); color: #000; }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+.btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--terminal-border); }
+.btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Terminal */
+.terminal { position: relative; background: var(--terminal-bg); border: 1px solid var(--terminal-border); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.4); max-width: 600px; width: 100%; text-align: left; }
+.terminal-bar { display: flex; align-items: center; gap: 6px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--terminal-border); }
+.terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
+.terminal-dot.red { background: #FF5F57; } .terminal-dot.yellow { background: #FEBC2E; } .terminal-dot.green { background: #28C840; }
+.terminal-title { color: var(--muted-fg); font-size: 0.75rem; margin-left: auto; }
+.terminal-body { padding: 1rem 1.25rem; font-size: 0.85rem; line-height: 1.8; }
+.terminal-body .prompt { color: var(--green); } .terminal-body .cmd { color: var(--text); } .terminal-body .comment { color: var(--muted-fg); }
+.terminal-copy { position: absolute; top: 0.6rem; right: 0.75rem; background: transparent; border: 1px solid var(--terminal-border); color: var(--muted); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; cursor: pointer; transition: all 0.2s; }
+.terminal-copy:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Sections */
+section { padding: 5rem 1.5rem; max-width: 1200px; margin: 0 auto; }
+.section-label { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--primary); margin-bottom: 0.75rem; }
+.section-title { font-size: clamp(1.75rem, 3vw, 2.5rem); font-weight: 800; margin-bottom: 0.5rem; }
+.section-desc { color: var(--muted); font-size: 1rem; margin-bottom: 3rem; max-width: 600px; }
+
+/* Cards */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+.card { background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 12px; padding: 1.25rem; transition: all 0.2s; }
+.card:hover { border-color: rgba(255,214,0,0.3); transform: translateY(-2px); }
+.card .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-fg); }
+.card h3 { font-size: 1rem; font-weight: 700; margin: 0.25rem 0; }
+.card .version { display: inline-block; font-size: 0.7rem; font-weight: 600; background: rgba(255,214,0,0.1); color: var(--primary); padding: 0.15rem 0.5rem; border-radius: 4px; }
+.card p { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
+
+/* Tables */
+.styled-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--terminal-border); }
+.styled-table th { text-align: left; padding: 0.75rem 1rem; background: var(--terminal-bg); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--terminal-border); }
+.styled-table td { padding: 0.75rem 1rem; border-bottom: 1px solid rgba(42,42,62,0.5); font-size: 0.9rem; }
+.styled-table tr:last-child td { border-bottom: none; }
+.styled-table tr:hover td { background: var(--surface-hover); }
+.styled-table code { background: var(--terminal-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+
+/* Features */
+.feature-group { margin-bottom: 2rem; }
+.feature-group h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; padding-left: 0.75rem; border-left: 3px solid var(--primary); }
+.feature-group.admin h3 { border-left-color: var(--purple); }
+.feature-group.infra h3 { border-left-color: var(--green); }
+.feature-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.75rem; }
+.feature-item { background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 10px; padding: 1rem 1.25rem; }
+.feature-item strong { font-size: 0.92rem; }
+.feature-item span { display: block; font-size: 0.82rem; color: var(--muted); margin-top: 0.25rem; }
+
+/* File tree */
+.file-tree { background: var(--terminal-bg); border: 1px solid var(--terminal-border); border-radius: 12px; padding: 1.5rem; font-size: 0.85rem; line-height: 1.7; }
+.file-tree .dir { color: var(--primary); font-weight: 600; cursor: pointer; }
+.file-tree .file { color: var(--text); }
+.file-tree .comment { color: var(--muted-fg); margin-left: 0.75rem; }
+.tree-children { padding-left: 1.25rem; }
+.tree-children.collapsed { display: none; }
+
+/* Footer */
+.site-footer { text-align: center; padding: 3rem 1.5rem; color: var(--muted-fg); font-size: 0.8rem; border-top: 1px solid var(--terminal-border); }
+.site-footer a { color: var(--muted); text-decoration: none; margin: 0 0.5rem; }
+.site-footer a:hover { color: var(--primary); }
+
+/* Pipeline */
+.pipeline { max-width: 600px; }
+.pipeline-step { display: flex; align-items: center; gap: 1rem; background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 10px; padding: 1rem 1.25rem; }
+.pipeline-step:hover { border-color: rgba(255,214,0,0.3); }
+.step-num { flex-shrink: 0; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--terminal-bg); border: 1px solid var(--terminal-border); font-size: 0.8rem; font-weight: 700; color: var(--primary); }
+.step-content { flex: 1; }
+.step-content h4 { font-size: 0.95rem; font-weight: 700; }
+.step-content p { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+.step-badge { flex-shrink: 0; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.step-badge.api { background: rgba(74,222,128,0.15); color: var(--green); }
+.step-badge.stealth { background: rgba(167,139,250,0.15); color: var(--purple); }
+.step-badge.cache { background: rgba(96,165,250,0.15); color: var(--blue); }
+.step-badge.ddg { background: rgba(255,214,0,0.1); color: var(--primary); }
+.step-badge.fallback { background: rgba(136,136,160,0.15); color: var(--muted); }
+.pipeline-arrow { text-align: center; color: var(--muted-fg); font-size: 1.1rem; padding: 0.15rem 0; }
+
+/* Layers */
+.layer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem; }
+.layer-card { background: var(--surface); border: 1px solid var(--terminal-border); border-radius: 12px; padding: 1.5rem; }
+.layer-card:hover { border-color: rgba(255,214,0,0.3); }
+.layer-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.layer-header h3 { font-size: 1.1rem; font-weight: 700; }
+.layer-tag { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.layer-tag.l1 { background: rgba(96,165,250,0.15); color: var(--blue); }
+.layer-tag.l2 { background: rgba(167,139,250,0.15); color: var(--purple); }
+.layer-card ul { list-style: none; }
+.layer-card li { font-size: 0.85rem; color: var(--muted); padding: 0.3rem 0; padding-left: 1rem; position: relative; }
+.layer-card li::before { content: ''; position: absolute; left: 0; top: 0.65rem; width: 5px; height: 5px; border-radius: 50%; background: var(--terminal-border); }
+
+@media (max-width: 768px) { .card-grid { grid-template-columns: 1fr 1fr; } .feature-list { grid-template-columns: 1fr; } .layer-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .card-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="badge">AI-Powered Classification</div>
+  <h1><span class="gradient-text">PartClassifier</span></h1>
+  <p class="desc">Reads mechanical parts from Excel, classifies each by type, looks up specifications from distributor APIs and web sources, and writes structured Excel output ready for Teamcenter import.</p>
+  <div class="hero-btns">
+    <a class="btn btn-primary" href="https://github.com/digitalthreadai/partclassifier">&#9733; GitHub</a>
+    <a class="btn btn-secondary" href="SITECONFIGURATIONS.html">Setup Guide &rarr;</a>
+  </div>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span>
+      <span class="terminal-title">Quick Start</span>
+    </div>
+    <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
+    <div class="terminal-body">
+      <div><span class="prompt">$</span> <span class="cmd">git clone https://github.com/digitalthreadai/partclassifier.git</span></div>
+      <div><span class="prompt">$</span> <span class="cmd">cd partclassifier && pip install -r requirements.txt</span></div>
+      <div><span class="prompt">$</span> <span class="cmd">cp .env.example .env</span> <span class="comment"># configure LLM provider</span></div>
+      <div><span class="prompt">$</span> <span class="cmd">streamlit run app.py</span> <span class="comment"># web UI at localhost:8501</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Stack -->
+<section id="stack">
+  <div class="section-label">Tech Stack</div>
+  <h2 class="section-title">Built With</h2>
+  <p class="section-desc">Python-first with multi-provider LLM support and industrial-grade scraping.</p>
+  <div class="card-grid">
+    <div class="card"><div class="label">Language</div><h3>Python</h3><span class="version">3.11+</span><p>Async pipeline with type hints</p></div>
+    <div class="card"><div class="label">LLM (Default)</div><h3>Groq</h3><span class="version">llama-3.3-70b</span><p>Free, fast inference</p></div>
+    <div class="card"><div class="label">LLM</div><h3>OpenAI / Anthropic</h3><span class="version">GPT-4o / Claude</span><p>Premium model options</p></div>
+    <div class="card"><div class="label">HTTP Stealth</div><h3>curl_cffi</h3><span class="version">&ge;0.7.0</span><p>Chrome TLS fingerprint (JA3/JA4)</p></div>
+    <div class="card"><div class="label">Browser Stealth</div><h3>CloakBrowser</h3><span class="version">&ge;0.3.0</span><p>33 C++ patches, bypasses Cloudflare</p></div>
+    <div class="card"><div class="label">Async HTTP</div><h3>httpx</h3><span class="version">&ge;0.27.0</span><p>DigiKey, Mouser, McMaster APIs</p></div>
+    <div class="card"><div class="label">HTML Parsing</div><h3>BeautifulSoup4</h3><span class="version">&ge;4.12.0</span><p>Extract text from scraped pages</p></div>
+    <div class="card"><div class="label">Excel I/O</div><h3>openpyxl</h3><span class="version">&ge;3.1.0</span><p>Read input, write per-class output</p></div>
+    <div class="card"><div class="label">Web UI</div><h3>Streamlit</h3><span class="version">&ge;1.38.0</span><p>Interactive dark-themed dashboard</p></div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="section-label">Capabilities</div>
+  <h2 class="section-title">Features</h2>
+  <p class="section-desc">Three execution modes, multi-source data retrieval, and intelligent processing.</p>
+
+  <div class="feature-group">
+    <h3>Core Pipeline</h3>
+    <div class="feature-list">
+      <div class="feature-item"><strong>AI Classification</strong><span>LLM classifies parts into 20+ categories (Flat Washer, Hex Bolt, etc.)</span></div>
+      <div class="feature-item"><strong>Multi-Source Lookup</strong><span>APIs &rarr; Stealth Browser &rarr; Cache &rarr; DuckDuckGo &rarr; Stealth Fallback</span></div>
+      <div class="feature-item"><strong>Attribute Extraction</strong><span>LLM extracts structured specs with automatic unit conversion (in &harr; mm)</span></div>
+      <div class="feature-item"><strong>Canonical Normalization</strong><span>120+ alias mappings ensure consistent column names per class</span></div>
+      <div class="feature-item"><strong>Per-Class Excel Output</strong><span>One .xlsx per part class with styled headers and auto-sized columns</span></div>
+      <div class="feature-item"><strong>URL Caching</strong><span>Shared cache makes reruns fast and deterministic</span></div>
+    </div>
+  </div>
+
+  <div class="feature-group admin">
+    <h3>Execution Modes</h3>
+    <div class="feature-list">
+      <div class="feature-item"><strong>Streamlit Web UI</strong><span>Interactive provider config, file picker, live progress, download buttons</span></div>
+      <div class="feature-item"><strong>API Key CLI</strong><span>Sequential processing via main.py with configurable LLM provider</span></div>
+      <div class="feature-item"><strong>Claude Code CLI</strong><span>Zero API keys, batch classify 100/call, parallel workers, auto-resume</span></div>
+    </div>
+  </div>
+
+  <div class="feature-group infra">
+    <h3>Scraping Intelligence</h3>
+    <div class="feature-list">
+      <div class="feature-item"><strong>Distributor APIs</strong><span>DigiKey, Mouser, McMaster-Carr structured data (bypasses LLM extraction)</span></div>
+      <div class="feature-item"><strong>CloakBrowser</strong><span>Stealth Chromium for McMaster-Carr, Fastenal, Grainger and bot-protected sites</span></div>
+      <div class="feature-item"><strong>Spec Scoring</strong><span>Keyword density algorithm ranks candidate pages by spec richness</span></div>
+      <div class="feature-item"><strong>Trusted Domains</strong><span>Preferred distributor sites (skdin.com, boltdepot.com, etc.) scored higher</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Execution Modes -->
+<section id="modes">
+  <div class="section-label">Modes</div>
+  <h2 class="section-title">Three Ways to Run</h2>
+  <div style="overflow-x:auto;">
+  <table class="styled-table">
+    <thead><tr><th>Mode</th><th>Entry Point</th><th>LLM Access</th><th>Web Search</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Web UI</strong></td><td><code>app.py</code></td><td>API key (configurable)</td><td>APIs &rarr; Stealth &rarr; DuckDuckGo &rarr; Stealth fallback</td><td>Non-technical users</td></tr>
+      <tr><td><strong>API Key CLI</strong></td><td><code>main.py</code></td><td>API key via .env</td><td>APIs &rarr; Stealth &rarr; DuckDuckGo &rarr; Stealth fallback</td><td>Small batches</td></tr>
+      <tr><td><strong>Claude Code CLI</strong></td><td><code>main_cc.py</code></td><td>claude CLI (zero-key)</td><td>APIs &rarr; Claude WebSearch/WebFetch</td><td>Large batches (1K-20K+)</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- Workflow -->
+<section id="workflow">
+  <div class="section-label">Pipeline</div>
+  <h2 class="section-title">Agent Workflow</h2>
+  <p class="section-desc">Six-step priority chain for maximum spec coverage with graceful fallbacks.</p>
+  <div class="pipeline">
+    <div class="pipeline-step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>Distributor APIs</h4>
+        <p>DigiKey, Mouser, McMaster-Carr &mdash; structured data, bypasses LLM extraction entirely</p>
+      </div>
+      <div class="step-badge api">Highest Quality</div>
+    </div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>Stealth Browser (Direct URL)</h4>
+        <p>CloakBrowser navigates to manufacturer product page &mdash; McMaster, Fastenal, Grainger</p>
+      </div>
+      <div class="step-badge stealth">Bot-Protected</div>
+    </div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>URL Cache</h4>
+        <p>Checks <code>url_cache.json</code> for a previously found working URL</p>
+      </div>
+      <div class="step-badge cache">Fast</div>
+    </div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <h4>DuckDuckGo + curl_cffi</h4>
+        <p>Searches web, scores candidate pages by spec density, scrapes best match</p>
+      </div>
+      <div class="step-badge ddg">Default</div>
+    </div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <h4>Stealth Browser (Search Fallback)</h4>
+        <p>Last resort: CloakBrowser searches DuckDuckGo and scrapes JS-rendered pages</p>
+      </div>
+      <div class="step-badge stealth">Last Resort</div>
+    </div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">6</div>
+      <div class="step-content">
+        <h4>Part Name Mining</h4>
+        <p>Extracts dimensions encoded in the part name string itself</p>
+      </div>
+      <div class="step-badge fallback">Fallback</div>
+    </div>
+  </div>
+</section>
+
+<!-- Bot Detection -->
+<section id="botdetect">
+  <div class="section-label">Reliability</div>
+  <h2 class="section-title">Bot Detection Bypass</h2>
+  <p class="section-desc">Two layers of stealth ensure maximum site coverage.</p>
+  <div class="layer-grid">
+    <div class="layer-card">
+      <div class="layer-header">
+        <span class="layer-tag l1">Layer 1</span>
+        <h3>curl_cffi</h3>
+      </div>
+      <ul>
+        <li>Chrome 124 TLS fingerprint (JA3/JA4)</li>
+        <li>Lightweight &mdash; no browser download</li>
+        <li>Used for all HTTP calls by default</li>
+        <li>Bypasses basic bot detection that blocks Python's default HTTP stack</li>
+      </ul>
+    </div>
+    <div class="layer-card">
+      <div class="layer-header">
+        <span class="layer-tag l2">Layer 2</span>
+        <h3>CloakBrowser</h3>
+      </div>
+      <ul>
+        <li>Custom Chromium with 33 C++ source-level patches</li>
+        <li>0.9 reCAPTCHA v3 score</li>
+        <li>Passes Cloudflare Turnstile, FingerprintJS, 30+ services</li>
+        <li>Full JS rendering for SPAs (McMaster-Carr, etc.)</li>
+        <li>Optional &mdash; <code>pip install cloakbrowser</code> (~200 MB)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- Structure -->
+<section id="structure">
+  <div class="section-label">Architecture</div>
+  <h2 class="section-title">Project Structure</h2>
+  <div class="file-tree">
+    <div style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">PartClassifier/</span></div>
+    <div class="tree-children">
+      <div><span class="file">main.py</span> <span class="comment">API key mode CLI</span></div>
+      <div><span class="file">main_cc.py</span> <span class="comment">Claude Code CLI mode</span></div>
+      <div><span class="file">app.py</span> <span class="comment">Streamlit web UI</span></div>
+      <div><span class="file">requirements.txt</span> <span class="comment">9 dependencies</span></div>
+      <div><span class="file">.env.example</span> <span class="comment">Config template</span></div>
+      <div style="cursor:pointer;margin-top:0.25rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">src/</span></div>
+      <div class="tree-children">
+        <div><span class="file">llm_client.py</span> <span class="comment">Unified LLM client (Groq/OpenAI/Anthropic/Ollama)</span></div>
+        <div><span class="file">claude_code_client.py</span> <span class="comment">Claude CLI wrapper for zero-key mode</span></div>
+        <div><span class="file">part_classifier.py</span> <span class="comment">LLM-based classification</span></div>
+        <div><span class="file">web_scraper.py</span> <span class="comment">Multi-source scraping strategy</span></div>
+        <div><span class="file">stealth_scraper.py</span> <span class="comment">CloakBrowser integration</span></div>
+        <div><span class="file">api_sources.py</span> <span class="comment">DigiKey/Mouser/McMaster APIs</span></div>
+        <div><span class="file">attribute_extractor.py</span> <span class="comment">LLM extraction + unit conversion</span></div>
+        <div><span class="file">attr_schema.py</span> <span class="comment">Canonical schemas + 120+ aliases</span></div>
+        <div><span class="file">excel_handler.py</span> <span class="comment">Excel read/write</span></div>
+      </div>
+      <div style="cursor:pointer;margin-top:0.25rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">input/</span></div>
+      <div class="tree-children">
+        <div><span class="file">PartClassifierInput.xlsx</span> <span class="comment">Sample input (4 parts)</span></div>
+      </div>
+      <div style="cursor:pointer;margin-top:0.25rem;" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span class="dir">output/</span></div>
+      <div class="tree-children">
+        <div><span class="comment">Generated .xlsx per part class</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <p>PartClassifier &middot; <a href="index.html">Docs Hub</a> <a href="COO.html">Strategy</a> <a href="SITECONFIGURATIONS.html">Setup</a> <a href="https://github.com/digitalthreadai/partclassifier">GitHub</a></p>
+</footer>
+
+<script>
+function copyCode(btn) {
+  const block = btn.closest('.terminal');
+  const code = block.querySelector('.terminal-body').textContent;
+  navigator.clipboard.writeText(code).then(() => { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000); });
+}
+</script>
+</body>
+</html>

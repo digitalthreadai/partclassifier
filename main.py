@@ -50,22 +50,26 @@ async def process_part(
     part_class = await classifier.classify(part_name)
     print(f"  Class   : {part_class}")
 
-    # 2 -- Find product page and scrape
+    # 2 -- Find product page / API data
     print(f"  Searching: {mfg_name} {mfg_part_num} ...")
-    raw_content, source_url = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
-
-    if raw_content:
-        print(f"  Content : {len(raw_content):,} chars")
-    else:
-        print(f"  Content : not found - falling back to part name")
+    result = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
 
     # 3 -- Extract attributes
-    if raw_content:
+    if result.attributes and len(result.attributes) >= 3:
+        # Structured API data — normalize and skip LLM extraction
+        from src.attr_schema import normalize_attrs
+        attributes = normalize_attrs(result.attributes, part_class)
+        source_url = result.source_url
+        print(f"  Source   : {result.source_name}")
+    elif result.content:
+        print(f"  Content : {len(result.content):,} chars")
         attributes = await attr_extractor.extract(
-            raw_content, part_class, mfg_part_num, part_name, unit_of_measure
+            result.content, part_class, mfg_part_num, part_name, unit_of_measure
         )
+        source_url = result.source_url
     else:
         # Fallback: mine dimensions from the part name itself
+        print(f"  Content : not found - falling back to part name")
         source_url = "part name"
         attributes = await attr_extractor.extract_from_part_name(
             part_name, part_class, mfg_part_num, unit_of_measure

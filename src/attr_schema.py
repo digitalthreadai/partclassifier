@@ -178,6 +178,22 @@ ALIASES: dict[str, str] = {
     # Compliance
     "rohs":                  "RoHS",
     "reach":                 "REACH",
+    # ── DigiKey / Mouser API parameter names ──
+    "screw/bolt size":       "Screw Size",
+    "inside diameter":       "Inner Diameter",
+    "outside diameter":      "Outer Diameter",
+    "overall thickness":     "Thickness",
+    "material - body":       "Material",
+    "body material":         "Material",
+    "surface treatment":     "Finish",
+    "surface finish":        "Finish",
+    "drive style":           "Drive Type",
+    "drive type":            "Drive Type",
+    "head type":             "Washer Type",
+    "overall length":        "Length",
+    "head style":            "Washer Type",
+    "thread pitch - metric": "Thread Pitch",
+    "threads per inch":      "Thread Pitch",
 }
 
 

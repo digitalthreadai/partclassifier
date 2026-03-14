@@ -1,13 +1,13 @@
 # Part Classification Agent
 
-An AI-powered agent that reads a list of mechanical parts from an Excel file, classifies each part by type, scrapes manufacturer/distributor websites for specifications, and writes one structured Excel output file per part class -- ready for Teamcenter classification import.
+An AI-powered agent that reads a list of mechanical parts from an Excel file, classifies each part by type, looks up specifications from distributor APIs and/or web scraping, and writes one structured Excel output file per part class -- ready for Teamcenter classification import.
 
 **Two execution modes:**
 
 | Mode | Entry point | LLM access | Web search | Best for |
 |---|---|---|---|---|
-| **API Key** | `main.py` or `app.py` | Groq / OpenAI / Anthropic / Ollama via API key | DuckDuckGo + curl_cffi | Users with direct API keys |
-| **Claude Code CLI** | `main_cc.py` | `claude` CLI (uses whatever backend is configured) | Claude's built-in WebSearch/WebFetch | Companies with Claude Code on Azure (no API keys needed) |
+| **API Key** | `main.py` or `app.py` | Groq / OpenAI / Anthropic / Ollama via API key | DigiKey / Mouser / McMaster APIs → DuckDuckGo fallback | Users with direct API keys |
+| **Claude Code CLI** | `main_cc.py` | `claude` CLI (uses whatever backend is configured) | DigiKey / Mouser / McMaster APIs → Claude WebSearch/WebFetch fallback | Companies with Claude Code on Azure (no API keys needed) |
 
 ---
 
@@ -44,8 +44,8 @@ Open http://localhost:8501, configure your LLM provider in the sidebar, select y
 For each part in the input Excel:
 
 1. **Classifies** the part (Flat Washer, Split Lock Washer, Internal Tooth Lock Washer, Hex Bolt, etc.) using an LLM based on the Part Name.
-2. **Searches** DuckDuckGo for the Manufacturer Part Number and scrapes the best product page found.
-3. **Extracts** all relevant attributes (dimensions, material, finish, standard, compliance, etc.) using an LLM, converting values to the unit of measure specified per part (inches or mm).
+2. **Looks up specs** via distributor APIs first (DigiKey, Mouser, McMaster-Carr) for structured data, falling back to DuckDuckGo web scraping if no API is configured or the part isn't found.
+3. **Extracts** all relevant attributes (dimensions, material, finish, standard, compliance, etc.) -- directly from API data when available, or via LLM extraction from scraped text -- converting values to the unit of measure specified per part (inches or mm).
 4. **Writes** one output Excel file per part class into the `output/` folder, with consistent column headers across all parts of the same class.
 
 ---
@@ -66,9 +66,21 @@ Input Excel
                       classifies part name -> "Split Lock Washer", "Flat Washer", etc.
     |
     v
+[API Sources] --> tries DigiKey API, Mouser API, McMaster API (if configured)
+              --> returns structured attributes directly (bypasses LLM extraction)
+              --> if 3+ attributes found: done -- skip web scraping entirely
+    |  (fallback if no API match)
+    v
+[Stealth Browser] --> for manufacturers with known URLs (McMaster, Fastenal, Grainger)
+                   --> CloakBrowser navigates directly to product page
+                   --> bypasses bot detection (Cloudflare, reCAPTCHA, FingerprintJS)
+                   --> extracts spec text from JS-rendered SPA
+    |  (fallback if no direct URL or stealth unavailable)
+    v
 [WebScraper] --> checks url_cache.json for known-good URL
               --> if no cache: runs DuckDuckGo searches, scores all candidate pages
               --> scrapes best page using curl_cffi (real Chrome TLS fingerprint)
+              --> if curl_cffi finds nothing: stealth browser searches + scrapes as last resort
               --> caches the winning URL for future runs
     |
     v
@@ -100,9 +112,11 @@ Phase 1: BATCH CLASSIFICATION (100 parts per claude CLI call)
 Phase 2: PARALLEL SEARCH + EXTRACT (4 workers by default)
     |
     Worker 1 ──┐
-    Worker 2 ──┤ Each worker runs `claude -p --allowedTools WebSearch,WebFetch`
-    Worker 3 ──┤   1. Checks url_cache.json for cached URL → fetch directly
-    Worker 4 ──┘   2. If no cache: searches trusted domains first, then general web
+    Worker 2 ──┤ Each worker:
+    Worker 3 ──┤   1. Tries distributor APIs (DigiKey, Mouser, McMaster) if configured
+    Worker 4 ──┘   2. If no API match: runs `claude -p --allowedTools WebSearch,WebFetch`
+                      a. Checks url_cache.json for cached URL → fetch directly
+                      b. If no cache: searches trusted domains first, then general web
                    3. Extracts attributes from fetched page (JSON response)
                    4. Caches the winning URL for future runs
     |
@@ -149,10 +163,12 @@ pip install -r requirements.txt
 This installs:
 - `openai` -- OpenAI-compatible SDK (used for Groq, OpenAI, Ollama, and custom providers)
 - `anthropic` -- Anthropic SDK (only needed if using Claude models)
+- `httpx` -- async HTTP client for distributor APIs (DigiKey, Mouser, McMaster)
 - `openpyxl` -- Excel read/write
 - `curl_cffi` -- HTTP client with real Chrome TLS fingerprint
 - `beautifulsoup4` -- HTML parsing
 - `python-dotenv` -- loads `.env` file
+- `cloakbrowser` -- stealth Chromium browser for bot-protected sites (optional, downloads ~200MB binary on first use)
 
 ### 5. Configure LLM provider
 
@@ -308,6 +324,49 @@ If `LLM_PROVIDER` is not set, the agent falls back to reading `GROQ_API_KEY` and
 
 ---
 
+## Distributor API Configuration (Optional)
+
+The agent can query distributor APIs directly for structured part data. This is **higher quality** than web scraping (structured specs, no parsing errors) and **faster** (no DuckDuckGo search + page scraping). All APIs are optional -- if not configured, the agent falls back to web scraping as before.
+
+**Priority order:** DigiKey API → Mouser API → McMaster API → Stealth Browser (direct URL) → DuckDuckGo web scraping → Stealth Browser (search fallback)
+
+When an API returns 3+ structured attributes, the LLM extraction step is skipped entirely -- the attributes are mapped directly to canonical names via the alias system.
+
+### DigiKey (free)
+
+Register at [developer.digikey.com](https://developer.digikey.com) to get OAuth2 credentials.
+
+```env
+DIGIKEY_CLIENT_ID=your_client_id
+DIGIKEY_CLIENT_SECRET=your_client_secret
+```
+
+Uses the Product Information v4 API. OAuth2 tokens are cached and auto-refreshed.
+
+### Mouser (free)
+
+Register at [api.mouser.com](https://api.mouser.com) to get an API key.
+
+```env
+MOUSER_API_KEY=your_api_key
+```
+
+Uses the Search API v2. Rate limited to 30 requests/minute (auto-throttled).
+
+### McMaster-Carr (by request)
+
+McMaster's API is not self-service. Email `eprocurement@mcmaster.com` to request access. You'll receive a client certificate for mTLS authentication.
+
+```env
+MCMASTER_BEARER_TOKEN=your_token
+MCMASTER_CLIENT_CERT=path/to/client.pem
+MCMASTER_CLIENT_KEY=path/to/client-key.pem
+```
+
+The agent gracefully handles missing McMaster credentials -- it simply skips the McMaster API and moves to the next source.
+
+---
+
 ## Output Format
 
 Each output Excel contains:
@@ -323,8 +382,11 @@ Attribute columns are ordered canonically per class (e.g., Screw Size, Inner Dia
 
 ## Reliability Features
 
+### Distributor API Priority
+When configured, the agent queries DigiKey, Mouser, and McMaster-Carr APIs before falling back to web scraping. API data is structured and pre-normalized, bypassing LLM extraction entirely -- this eliminates parsing errors and hallucination risk for parts found in these catalogs.
+
 ### URL Caching (`url_cache.json`)
-After the first successful scrape for a part number, the winning URL is saved to `url_cache.json`. On subsequent runs, the agent goes directly to that URL instead of re-searching -- making reruns fast and deterministic. To force a fresh search for a part, delete its entry from the cache.
+After the first successful lookup for a part number (via API or web scrape), the source URL is saved to `url_cache.json`. On subsequent runs, the agent goes directly to that URL instead of re-searching -- making reruns fast and deterministic. To force a fresh search for a part, delete its entry from the cache.
 
 ### Preferred Source Domains
 The agent prioritizes trusted industrial fastener distributor sites over generic results:
@@ -333,8 +395,11 @@ The agent prioritizes trusted industrial fastener distributor sites over generic
 ### Spec Scoring
 Every candidate page is scored by the density of spec-related keywords (inner diameter, outer diameter, thickness, material, hardness, DIN, ASME, ISO, etc.) plus a bonus if the exact part number appears on the page. The highest-scoring page wins.
 
-### Bot Detection Bypass
-`curl_cffi` is used instead of `requests` for all HTTP calls. It impersonates a real Chrome browser at the TLS level (JA3/JA4 fingerprint), which bypasses basic bot detection that blocks Python's default HTTP stack.
+### Bot Detection Bypass (Two Layers)
+
+**Layer 1: curl_cffi (default, lightweight).** Used for all HTTP calls. Impersonates Chrome 124 at the TLS level (JA3/JA4 fingerprint), bypassing basic bot detection that blocks Python's default HTTP stack.
+
+**Layer 2: CloakBrowser (optional, heavy-duty).** A custom-compiled Chromium with 33 source-level C++ patches. Achieves a 0.9 reCAPTCHA v3 score and passes Cloudflare Turnstile, FingerprintJS, and 30+ detection services. Used automatically for manufacturers with known direct URLs (McMaster-Carr, Fastenal, Grainger) and as a last-resort fallback when curl_cffi returns nothing useful. Install with `pip install cloakbrowser` (downloads ~200MB Chromium binary on first use). Set `STEALTH_BROWSER_ENABLED=false` in `.env` to disable.
 
 ### Canonical Attribute Normalization (`src/attr_schema.py`)
 Different sources use different names for the same attribute ("Screw Size" vs "Thread Size" vs "For Screw Size"). The agent maps all known aliases to a single canonical name per class, ensuring all parts of the same class have identical Excel columns regardless of which source was used.
@@ -368,10 +433,12 @@ PartClassifier/
 ├── output/                    # Auto-generated; one .xlsx per part class
 └── src/
     ├── __init__.py
+    ├── api_sources.py         # Distributor API clients (DigiKey, Mouser, McMaster) -- both modes
     ├── llm_client.py          # Unified LLM client (Groq/OpenAI/Anthropic/Ollama) -- API key mode
     ├── claude_code_client.py  # Claude Code CLI wrapper -- Claude Code CLI mode
     ├── part_classifier.py     # LLM-based part classification -- API key mode
-    ├── web_scraper.py         # DuckDuckGo search + curl_cffi scraping -- API key mode
+    ├── web_scraper.py         # API-first lookup + stealth browser + DuckDuckGo fallback -- API key mode
+    ├── stealth_scraper.py     # CloakBrowser integration for bot-protected sites (optional)
     ├── attribute_extractor.py # LLM-based attribute extraction + unit conversion
     ├── attr_schema.py         # Canonical attribute names + alias normalization
     └── excel_handler.py       # Input reader + per-class output writer
@@ -397,8 +464,8 @@ Other part types are handled with a generic attribute schema. To add a new class
 
 ## Notes
 
-- McMaster-Carr blocks all automated scraping. For McMaster parts, the agent searches for them on trusted distributor mirrors (skdin.com, aftfasteners.com, etc.) which carry the same spec data.
+- **McMaster-Carr:** If you have McMaster API access (see [Distributor API Configuration](#distributor-api-configuration-optional)), the agent queries their API directly. If CloakBrowser is installed (`pip install cloakbrowser`), the agent navigates directly to `mcmaster.com/{partNumber}` using a stealth Chromium browser that bypasses their bot detection. Otherwise, it searches for McMaster parts on trusted distributor mirrors (skdin.com, aftfasteners.com, etc.) which carry the same spec data.
 - The `url_cache.json` file is safe to commit -- it only contains public product page URLs and speeds up reruns significantly. It is shared between both execution modes.
 - The `output/` folder is git-ignored and regenerated on each run.
 - The `progress_cc.json` file is auto-generated by `main_cc.py` for resume support. It is automatically deleted when all parts complete successfully. Do not commit it.
-- **Claude Code CLI mode** does not require `openai`, `anthropic`, `curl_cffi`, `beautifulsoup4`, or `python-dotenv` -- it only needs `openpyxl` (for Excel I/O) and the `claude` CLI on PATH.
+- **Claude Code CLI mode** does not require `openai`, `anthropic`, `curl_cffi`, `beautifulsoup4`, or `python-dotenv` -- it only needs `openpyxl` (for Excel I/O), `httpx` (for distributor APIs, if configured), and the `claude` CLI on PATH.
