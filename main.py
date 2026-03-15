@@ -16,6 +16,7 @@ Prerequisites:
 
 import asyncio
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,6 +26,30 @@ load_dotenv()
 BASE_DIR   = Path(__file__).parent
 EXCEL_PATH = BASE_DIR / "input" / "PartClassifierInput.xlsx"
 OUTPUT_DIR = BASE_DIR / "output"
+
+
+def _rotate_manufacturers(parts: list[dict]) -> list[dict]:
+    """Reorder parts so same-manufacturer parts aren't adjacent.
+
+    Round-robin interleave by manufacturer name to space out requests
+    to the same site (reduces bot detection risk).
+    """
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for p in parts:
+        mfg = str(p.get("Manufacturer Name") or "").strip().upper()
+        buckets[mfg].append(p)
+
+    # Sort buckets largest-first so the most common manufacturer gets spread widest
+    sorted_buckets = sorted(buckets.values(), key=len, reverse=True)
+
+    rotated: list[dict] = []
+    while any(sorted_buckets):
+        for bucket in sorted_buckets:
+            if bucket:
+                rotated.append(bucket.pop(0))
+        sorted_buckets = [b for b in sorted_buckets if b]
+
+    return rotated
 
 
 # -- Per-part processing ---------------------------------------------------
@@ -113,7 +138,7 @@ async def main() -> None:
     classifier     = PartClassifier(llm)
     attr_extractor = AttributeExtractor(llm)
 
-    parts = handler.read_parts()
+    parts = _rotate_manufacturers(handler.read_parts())
 
     print(f"\nPart Classification Agent")
     print(f"{'='*60}")

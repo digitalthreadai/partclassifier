@@ -61,7 +61,10 @@ class StealthScraper:
         if not self._browser:
             return None
 
-        page = await self._browser.new_page()
+        # Fresh browser context per scrape — clean cookies, localStorage, session
+        # This prevents McMaster from tracking across multiple page loads
+        context = await self._browser.new_context()
+        page = await context.new_page()
         tag = f"[Stealth/{label}]" if label else "[Stealth]"
         try:
             # Random delay to simulate human arriving at the page
@@ -128,6 +131,7 @@ class StealthScraper:
             return None
         finally:
             await page.close()
+            await context.close()
 
     async def search_and_scrape(self, query: str, mfg_name: str = "") -> SourceResult | None:
         """Search DuckDuckGo via the stealth browser and scrape the best result.
