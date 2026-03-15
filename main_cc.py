@@ -32,6 +32,7 @@ import json
 import sys
 import threading
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -54,6 +55,30 @@ def safe_print(*args, **kwargs):
     """Thread-safe print that prevents interleaved output."""
     with _print_lock:
         print(*args, **kwargs)
+
+
+def _rotate_manufacturers(parts: list[dict]) -> list[dict]:
+    """Reorder parts so same-manufacturer parts aren't adjacent.
+
+    Round-robin interleave by manufacturer name to space out requests
+    to the same site (reduces bot detection risk).
+    """
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for p in parts:
+        mfg = str(p.get("Manufacturer Name") or "").strip().upper()
+        buckets[mfg].append(p)
+
+    # Sort buckets largest-first so the most common manufacturer gets spread widest
+    sorted_buckets = sorted(buckets.values(), key=len, reverse=True)
+
+    rotated: list[dict] = []
+    while any(sorted_buckets):
+        for bucket in sorted_buckets:
+            if bucket:
+                rotated.append(bucket.pop(0))
+        sorted_buckets = [b for b in sorted_buckets if b]
+
+    return rotated
 
 
 # ── Progress persistence ─────────────────────────────────────────────────────
@@ -279,7 +304,7 @@ def main() -> None:
     api_sources = get_api_sources()
 
     handler = ExcelHandler(str(EXCEL_PATH), str(OUTPUT_DIR))
-    parts   = handler.read_parts()
+    parts   = _rotate_manufacturers(handler.read_parts())
     total   = len(parts)
 
     # Load previous progress (unless --fresh)
