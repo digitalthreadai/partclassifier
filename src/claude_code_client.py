@@ -24,26 +24,8 @@ import sys
 import threading
 from pathlib import Path
 
-from src.attr_schema import get_schema, normalize_attrs
+from src.attr_schema import KNOWN_CLASSES, get_schema, normalize_attrs
 from src.attribute_extractor import _unit_instructions, _parse_json, _example_json
-
-# Known part classes for the classification prompt
-KNOWN_CLASSES = [
-    "Washer", "Lock Washer", "Split Lock Washer", "Flat Washer",
-    "Fender Washer", "Internal Tooth Lock Washer", "External Tooth Lock Washer",
-    "Nut", "Lock Nut", "Hex Nut", "Wing Nut",
-    "Bolt", "Hex Bolt", "Carriage Bolt",
-    "Screw", "Cap Screw", "Set Screw", "Machine Screw",
-    "Hook", "Eye Bolt", "Eye Hook",
-    "Pin", "Cotter Pin", "Dowel Pin", "Roll Pin",
-    "Rivet", "Blind Rivet",
-    "Clip", "E-Clip", "C-Clip",
-    "Ring", "Retaining Ring", "O-Ring",
-    "Bushing", "Spacer", "Standoff",
-    "Stud", "Insert", "Anchor",
-    "Spring", "Compression Spring",
-    "Bracket", "Fitting",
-]
 
 # Domains known to have reliable industrial fastener spec data
 PREFERRED_DOMAINS = [
@@ -78,7 +60,7 @@ def _save_cache(cache: dict) -> None:
 class ClaudeCodeClient:
     """Wraps the `claude` CLI for LLM and web search operations."""
 
-    def __init__(self, claude_cmd: str = "claude"):
+    def __init__(self, claude_cmd: str = "claude", model: str = ""):
         # On Windows, npm CLIs are .cmd files; shutil.which() resolves them properly
         resolved = shutil.which(claude_cmd)
         if not resolved:
@@ -87,6 +69,7 @@ class ClaudeCodeClient:
                 "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
             )
         self.claude_cmd = resolved
+        self._model = model  # e.g. "opus", "sonnet", or full model ID
         self._cache = _load_cache()
         self._cache_lock = threading.Lock()
         self._verify_cli()
@@ -121,6 +104,9 @@ class ClaudeCodeClient:
     ) -> str:
         """Run the claude CLI with a prompt and return stdout text."""
         cmd = [self.claude_cmd, "-p", "--output-format", "text"]
+
+        if self._model:
+            cmd += ["--model", self._model]
 
         if allowed_tools:
             cmd += ["--allowedTools", ",".join(allowed_tools)]
@@ -216,6 +202,22 @@ class ClaudeCodeClient:
             result[p["key"]] = cls or "Unclassified"
 
         return result
+
+    def classify_single(self, text: str) -> str:
+        """Classify a single part from text (web content, attributes, or part name)."""
+        text = text[:600].strip()
+        prompt = (
+            "You are an industrial parts classification expert.\n"
+            "Classify this part into the MOST SPECIFIC category (1-4 words).\n"
+            "Reply with ONLY the category name. No explanation.\n\n"
+            f"INPUT:\n{text}\n\n"
+            f"Available categories: {', '.join(KNOWN_CLASSES)}\n\n"
+            "If unsure, pick the closest match. Only use 'Unclassified' as last resort."
+        )
+        raw = self._run_claude(prompt, timeout=60)
+        if raw:
+            return raw.strip().strip('"').strip("'").strip(".")
+        return "Unclassified"
 
     def search_and_extract(
         self,

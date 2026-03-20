@@ -21,6 +21,47 @@ HOW IT WORKS
 from typing import OrderedDict
 
 
+# ── Known part classes (canonical source) ─────────────────────────────────────
+# All modules that need the class list should import from here.
+
+KNOWN_CLASSES = [
+    # Fasteners
+    "Washer", "Lock Washer", "Split Lock Washer", "Flat Washer",
+    "Fender Washer", "Internal Tooth Lock Washer", "External Tooth Lock Washer",
+    "Nut", "Lock Nut", "Hex Nut", "Wing Nut",
+    "Bolt", "Hex Bolt", "Carriage Bolt",
+    "Screw", "Cap Screw", "Set Screw", "Machine Screw", "Socket Head Cap Screw",
+    "Hook", "Eye Bolt", "Eye Hook",
+    "Pin", "Cotter Pin", "Dowel Pin", "Roll Pin",
+    "Rivet", "Blind Rivet",
+    "Clip", "E-Clip", "C-Clip",
+    "Ring", "Retaining Ring",
+    "Bushing", "Spacer", "Standoff",
+    "Stud", "Insert", "Anchor",
+    "Spring", "Compression Spring",
+    "Bracket",
+    # Seals & Fittings
+    "O-Ring", "Seal", "Gasket",
+    "Tube Fitting", "VCR Fitting", "Pipe Fitting",
+    # Pneumatics & Hydraulics
+    "Solenoid Valve", "Pneumatic Valve", "Pneumatic Cylinder",
+    "Flow Controller", "Pressure Regulator",
+    # Bearings & Linear Motion
+    "Ball Bearing", "Deep Groove Ball Bearing", "Angular Contact Bearing",
+    "Needle Bearing", "Crossed Roller Bearing",
+    "Linear Guide", "Linear Block", "Ball Screw",
+    # Sensors & Electrical
+    "Proximity Sensor", "Photoelectric Sensor", "Fiber Optic Sensor",
+    "Laser Sensor", "Pressure Sensor",
+    "Connector", "Terminal", "Relay", "Timer",
+    # Vacuum & Semiconductor
+    "Vacuum Valve", "Gate Valve", "Vacuum Pump Accessory",
+    "Wafer Shipper", "Wafer Carrier",
+    "Filter", "Gas Filter", "Liquid Filter",
+    "Mass Flow Controller", "Pressure Gauge", "Vacuum Gauge",
+]
+
+
 # ── Canonical attribute lists per class ───────────────────────────────────────
 # These are the exact column names that will appear in the output Excel.
 # Order here = column order in the output file.

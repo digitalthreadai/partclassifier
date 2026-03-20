@@ -39,9 +39,34 @@ from pathlib import Path
 import asyncio
 
 BASE_DIR      = Path(__file__).parent
-EXCEL_PATH    = BASE_DIR / "input" / "PartClassifierInput.xlsx"
-OUTPUT_DIR    = BASE_DIR / "output"
-PROGRESS_FILE = BASE_DIR / "progress_cc.json"
+
+def _get_output_dir() -> Path:
+    """Get output directory from --output arg or default."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--output" and i + 1 < len(sys.argv):
+            return Path(sys.argv[i + 1])
+    return BASE_DIR / "output"
+
+OUTPUT_DIR    = _get_output_dir()
+
+def _get_progress_file() -> Path:
+    """Get progress file path - use model-specific file if --model is specified."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--model" and i + 1 < len(sys.argv):
+            model = sys.argv[i + 1].lower().replace("-", "_")
+            return BASE_DIR / f"progress_cc_{model}.json"
+    return BASE_DIR / "progress_cc.json"
+
+PROGRESS_FILE = _get_progress_file()
+
+def _get_input_path() -> Path:
+    """Get input Excel path from --input arg or default."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--input" and i + 1 < len(sys.argv):
+            return Path(sys.argv[i + 1])
+    return BASE_DIR / "input" / "PartClassifierInput.xlsx"
+
+EXCEL_PATH = _get_input_path()
 
 # Write Excel output every N completed parts (and at the end)
 WRITE_INTERVAL = 50
@@ -208,11 +233,63 @@ def process_part(
     part: dict, client, index: int, total: int, part_class: str,
     api_sources: list | None = None,
 ) -> dict:
-    """Process a single part: search+extract (classification already done)."""
+    """Process a single part: scrape → classify → extract (single web scrape).
+
+    Flow:
+      1. Web scrape once via curl_cffi (WebScraper)
+      2. Classify from scraped content (pattern matching, no LLM)
+      3. Extract attributes via Claude CLI using the cached URL (no re-search)
+      4. Fall back to Claude CLI web search only if curl_cffi found nothing
+    """
     mfg_part_num    = str(part.get("Manufacturer Part Number") or "").strip()
     mfg_name        = str(part.get("Manufacturer Name")        or "").strip()
     part_name       = str(part.get("Part Name")                or "").strip()
     unit_of_measure = str(part.get("Unit of Measure")          or "inches").strip().lower()
+
+    from src.class_extractor import extract_class_from_content
+    from src.web_scraper import WebScraper
+
+    # ── STEP 1: Web scrape once via curl_cffi ────────────────────────────────
+    scraped_content = None
+    scraped_url = None
+
+    if part_class in ("Unclassified", "Unknown", ""):
+        try:
+            scraper = WebScraper()
+            # Try cached URL first
+            cached_url = scraper._cache.get(mfg_part_num)
+            if cached_url:
+                scraped_content = scraper._scrape_url(cached_url)
+                if scraped_content and len(scraped_content) >= 200:
+                    scraped_url = cached_url
+                else:
+                    scraped_content = None
+
+            # If no cache hit, search DuckDuckGo
+            if not scraped_content:
+                urls = scraper._search_duckduckgo(f"{mfg_name} {mfg_part_num} specifications")
+                for url in urls[:3]:
+                    scraped_content = scraper._scrape_url(url)
+                    if scraped_content and len(scraped_content) >= 200:
+                        scraped_url = url
+                        # Save to cache for later use by Claude CLI
+                        scraper._cache[mfg_part_num] = url
+                        from src.web_scraper import _save_cache
+                        _save_cache(scraper._cache)
+                        break
+                    scraped_content = None
+
+            scraper._session.close()
+        except Exception as e:
+            safe_print(f"  [{index}/{total}] Web scrape error: {e}")
+
+    # ── STEP 2: Classify from scraped content (no LLM) ──────────────────────
+    if part_class in ("Unclassified", "Unknown", ""):
+        if scraped_content and len(scraped_content) >= 100:
+            extracted_class = extract_class_from_content(scraped_content, scraped_url or "")
+            if extracted_class:
+                part_class = extracted_class
+                safe_print(f"  [{index}/{total}] Classified from web content: {part_class}")
 
     safe_print(
         f"\n{'-'*60}\n"
@@ -224,11 +301,12 @@ def process_part(
         f"  Class   : {part_class}"
     )
 
-    # Try distributor APIs first (DigiKey, Mouser, McMaster) if configured
+    # ── STEP 3: Extract attributes ───────────────────────────────────────────
     from src.attr_schema import normalize_attrs
     attributes = {}
     source_url = ""
 
+    # Try distributor APIs first (DigiKey, Mouser, McMaster) if configured
     for source in (api_sources or []):
         try:
             result = _run_async(source.search(mfg_name, mfg_part_num, unit_of_measure))
@@ -240,19 +318,44 @@ def process_part(
         except Exception as e:
             safe_print(f"  [{index}/{total}] {source.name} error: {e}")
 
-    # Fall back to Claude CLI web search if APIs didn't find it
+    # If we have a cached URL from scraping, use fetch_and_extract (no re-search)
+    if not attributes and scraped_url:
+        safe_print(f"  [{index}/{total}] Extracting from: {scraped_url}")
+        attributes, source_url = client._fetch_and_extract(
+            scraped_url, mfg_part_num, part_class, part_name, unit_of_measure
+        )
+
+    # Fall back to Claude CLI web search only if curl_cffi found nothing
     if not attributes:
         safe_print(f"  [{index}/{total}] Searching: {mfg_name} {mfg_part_num} ...")
         attributes, source_url = client.search_and_extract(
             mfg_name, mfg_part_num, part_class, part_name, unit_of_measure
         )
 
+    # Re-classify from extracted attributes if still unclassified
+    if part_class in ("Unclassified", "Unknown") and attributes:
+        attr_text = " ".join(f"{k}: {v}" for k, v in attributes.items())
+        extracted_class = extract_class_from_content(attr_text, source_url)
+        if extracted_class:
+            safe_print(f"  [{index}/{total}] Reclassified from attrs: {part_class} → {extracted_class}")
+            part_class = extracted_class
+        else:
+            attr_desc = ", ".join(f"{k}: {v}" for k, v in list(attributes.items())[:5])
+            reclassify_text = f"{mfg_name} {mfg_part_num} — {attr_desc}"
+            try:
+                new_class = client.classify_single(reclassify_text)
+                if new_class and new_class != "Unclassified":
+                    safe_print(f"  [{index}/{total}] Reclassified (LLM): {part_class} → {new_class}")
+                    part_class = new_class
+            except Exception as e:
+                safe_print(f"  [{index}/{total}] Reclassify failed: {e}")
+
     # Fallback if nothing found at all
     if not attributes:
         safe_print(f"  [{index}/{total}] Web search returned nothing — falling back to part name")
         source_url = "part name"
         attributes = client.extract_from_part_name(
-            part_name, part_class, mfg_part_num, unit_of_measure
+            part_name or f"{mfg_name} {mfg_part_num}", part_class, mfg_part_num, unit_of_measure
         )
 
     if attributes:
@@ -271,21 +374,24 @@ def process_part(
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def parse_args() -> tuple[bool, int]:
-    """Parse CLI args. Returns (fresh_start, num_workers)."""
+def parse_args() -> tuple[bool, int, str]:
+    """Parse CLI args. Returns (fresh_start, num_workers, model)."""
     fresh = "--fresh" in sys.argv
     workers = DEFAULT_WORKERS
+    model = ""
     for i, arg in enumerate(sys.argv):
         if arg == "--workers" and i + 1 < len(sys.argv):
             try:
                 workers = max(1, int(sys.argv[i + 1]))
             except ValueError:
                 pass
-    return fresh, workers
+        if arg == "--model" and i + 1 < len(sys.argv):
+            model = sys.argv[i + 1]
+    return fresh, workers, model
 
 
 def main() -> None:
-    fresh_start, num_workers = parse_args()
+    fresh_start, num_workers, model = parse_args()
 
     if not EXCEL_PATH.exists():
         safe_print(f"ERROR: {EXCEL_PATH} not found")
@@ -296,7 +402,7 @@ def main() -> None:
     from src.api_sources        import get_api_sources
 
     try:
-        client = ClaudeCodeClient()
+        client = ClaudeCodeClient(model=model)
     except RuntimeError as e:
         safe_print(f"ERROR: {e}")
         sys.exit(1)

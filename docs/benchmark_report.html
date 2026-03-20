@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartClassifier - LLM Benchmark Report</title>
+<style>
+  :root {
+    --bg: #0a0a0f; --bg2: #12121a; --bg3: #1a1a2e; --bg4: #22223a;
+    --text: #e8e8ed; --muted: #8888a0; --accent: #6c63ff; --accent2: #00d4aa;
+    --green: #00d4aa; --yellow: #ffc857; --red: #ff6b6b; --blue: #4ecdc4;
+    --orange: #ff9f43;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  .hero {
+    background: linear-gradient(135deg, var(--bg2), var(--bg3));
+    padding: 60px 40px 40px;
+    border-bottom: 1px solid rgba(108,99,255,0.3);
+    text-align: center;
+  }
+  .hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: 8px; }
+  .hero h1 span { color: var(--accent); }
+  .hero p { color: var(--muted); font-size: 1.1rem; max-width: 700px; margin: 0 auto; }
+  .hero .meta { margin-top: 16px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+  .hero .meta span { color: var(--muted); font-size: 0.85rem; }
+  .hero .meta span strong { color: var(--text); }
+
+  .container { max-width: 1300px; margin: 0 auto; padding: 40px 24px; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 48px; }
+  .summary-card {
+    background: var(--bg2); border: 1px solid var(--bg4); border-radius: 12px;
+    padding: 28px; position: relative; overflow: hidden;
+  }
+  .summary-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .summary-card.groq::before { background: var(--orange); }
+  .summary-card.sonnet::before { background: var(--blue); }
+  .summary-card.opus::before { background: var(--accent); }
+  .summary-card h3 { font-size: 1.3rem; margin-bottom: 4px; }
+  .summary-card .model-tag { font-size: 0.8rem; color: var(--muted); margin-bottom: 20px; display: block; }
+  .summary-card .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .stat-item .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-item .value { font-size: 1.6rem; font-weight: 700; }
+  .stat-item .value.good { color: var(--green); }
+  .stat-item .value.mid { color: var(--yellow); }
+  .stat-item .value.bad { color: var(--red); }
+
+  .winner-banner {
+    background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(0,212,170,0.15));
+    border: 1px solid rgba(108,99,255,0.4); border-radius: 12px;
+    padding: 24px 32px; margin-bottom: 48px; text-align: center;
+  }
+  .winner-banner h2 { font-size: 1.5rem; color: var(--accent); margin-bottom: 8px; }
+  .winner-banner p { color: var(--muted); max-width: 800px; margin: 0 auto; }
+
+  .section-header { margin-bottom: 20px; }
+  .section-header h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+  .section-header p { color: var(--muted); font-size: 0.9rem; }
+
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 48px; }
+  .chart-card {
+    background: var(--bg2); border: 1px solid var(--bg4); border-radius: 12px; padding: 24px;
+  }
+  .chart-card h4 { font-size: 1rem; margin-bottom: 16px; color: var(--text); }
+  .bar-row { display: flex; align-items: center; margin-bottom: 10px; }
+  .bar-label { width: 70px; font-size: 0.85rem; color: var(--muted); flex-shrink: 0; }
+  .bar-track { flex: 1; height: 28px; background: var(--bg); border-radius: 6px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 0.8rem; font-weight: 600; transition: width 0.5s; min-width: 40px; }
+  .bar-fill.groq { background: linear-gradient(90deg, var(--orange), #ffb366); }
+  .bar-fill.sonnet { background: linear-gradient(90deg, var(--blue), #7ee8de); }
+  .bar-fill.opus { background: linear-gradient(90deg, var(--accent), #8b83ff); }
+
+  .table-wrapper {
+    background: var(--bg2); border: 1px solid var(--bg4); border-radius: 12px;
+    overflow-x: auto; margin-bottom: 48px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  thead th {
+    background: var(--bg3); padding: 12px 14px; text-align: left;
+    font-weight: 600; color: var(--muted); font-size: 0.75rem;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    position: sticky; top: 0; border-bottom: 1px solid var(--bg4);
+  }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  tbody tr:hover { background: rgba(108,99,255,0.06); }
+  .cls-match { color: var(--green); }
+  .cls-mismatch { color: var(--yellow); }
+  .cls-none { color: var(--red); }
+  .attr-best { color: var(--green); font-weight: 700; }
+  .attr-zero { color: var(--red); }
+  td.pn { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; white-space: nowrap; }
+
+  .insights {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 48px;
+  }
+  .insight-card {
+    background: var(--bg2); border: 1px solid var(--bg4); border-radius: 12px; padding: 24px;
+  }
+  .insight-card h4 { font-size: 1rem; margin-bottom: 12px; }
+  .insight-card ul { list-style: none; }
+  .insight-card li { padding: 6px 0; color: var(--muted); font-size: 0.9rem; }
+  .insight-card li::before { content: '\2022'; color: var(--accent); margin-right: 8px; }
+
+  .footer { text-align: center; padding: 40px; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--bg4); }
+
+  @media (max-width: 768px) {
+    .summary-grid, .chart-grid, .insights { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Part<span>Classifier</span> LLM Benchmark</h1>
+  <p>Comparing Groq (llama-3.3-70b), Claude Sonnet, and Claude Opus on 44 semiconductor equipment parts across 22 manufacturers</p>
+  <div class="meta">
+    <span><strong>44</strong> parts tested</span>
+    <span><strong>22</strong> manufacturers</span>
+    <span><strong>3</strong> LLM backends</span>
+    <span>Run date: <strong>March 19, 2026</strong></span>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="winner-banner">
+    <h2>Opus wins overall: highest attribute extraction rate (80%) and richest data (4.1 attrs/part)</h2>
+    <p>Claude Opus extracted attributes for 80% of parts (avg 4.1 per part), followed by Sonnet at 70% (3.1/part). Groq was fastest but suffered from network timeouts during parallel runs, achieving 48% with attrs. Classification from web content now works across all 3 backends, eliminating the need for Part Name input.</p>
+  </div>
+
+  <div class="section-header"><h2>Summary</h2></div>
+  <div class="summary-grid">
+    <div class="summary-card groq">
+      <h3>Groq</h3>
+      <span class="model-tag">llama-3.3-70b-versatile (free tier)</span>
+      <div class="stats">
+        <div class="stat-item"><div class="label">Classified</div><div class="value mid">50%</div></div>
+        <div class="stat-item"><div class="label">With Attrs</div><div class="value mid">48%</div></div>
+        <div class="stat-item"><div class="label">Avg Attrs</div><div class="value mid">3.2</div></div>
+        <div class="stat-item"><div class="label">Speed</div><div class="value good">~5s/part</div></div>
+      </div>
+    </div>
+    <div class="summary-card sonnet">
+      <h3>Claude Sonnet</h3>
+      <span class="model-tag">Claude Code CLI (enterprise default)</span>
+      <div class="stats">
+        <div class="stat-item"><div class="label">Classified</div><div class="value good">75%</div></div>
+        <div class="stat-item"><div class="label">With Attrs</div><div class="value good">70%</div></div>
+        <div class="stat-item"><div class="label">Avg Attrs</div><div class="value mid">3.1</div></div>
+        <div class="stat-item"><div class="label">Speed</div><div class="value mid">52s/part</div></div>
+      </div>
+    </div>
+    <div class="summary-card opus">
+      <h3>Claude Opus</h3>
+      <span class="model-tag">Claude Code CLI (premium)</span>
+      <div class="stats">
+        <div class="stat-item"><div class="label">Classified</div><div class="value good">70%</div></div>
+        <div class="stat-item"><div class="label">With Attrs</div><div class="value good">80%</div></div>
+        <div class="stat-item"><div class="label">Avg Attrs</div><div class="value good">4.1</div></div>
+        <div class="stat-item"><div class="label">Speed</div><div class="value mid">48s/part</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><h2>Visual Comparison</h2></div>
+  <div class="chart-grid">
+    <div class="chart-card">
+      <h4>Classification Rate</h4>
+      <div class="bar-row"><span class="bar-label">Groq</span><div class="bar-track"><div class="bar-fill groq" style="width:50%">50%</div></div></div>
+      <div class="bar-row"><span class="bar-label">Sonnet</span><div class="bar-track"><div class="bar-fill sonnet" style="width:75%">75%</div></div></div>
+      <div class="bar-row"><span class="bar-label">Opus</span><div class="bar-track"><div class="bar-fill opus" style="width:70%">70%</div></div></div>
+    </div>
+    <div class="chart-card">
+      <h4>Parts with Attributes</h4>
+      <div class="bar-row"><span class="bar-label">Groq</span><div class="bar-track"><div class="bar-fill groq" style="width:48%">48%</div></div></div>
+      <div class="bar-row"><span class="bar-label">Sonnet</span><div class="bar-track"><div class="bar-fill sonnet" style="width:70%">70%</div></div></div>
+      <div class="bar-row"><span class="bar-label">Opus</span><div class="bar-track"><div class="bar-fill opus" style="width:80%">80%</div></div></div>
+    </div>
+    <div class="chart-card">
+      <h4>Avg Attributes per Part</h4>
+      <div class="bar-row"><span class="bar-label">Groq</span><div class="bar-track"><div class="bar-fill groq" style="width:32%">3.2</div></div></div>
+      <div class="bar-row"><span class="bar-label">Sonnet</span><div class="bar-track"><div class="bar-fill sonnet" style="width:31%">3.1</div></div></div>
+      <div class="bar-row"><span class="bar-label">Opus</span><div class="bar-track"><div class="bar-fill opus" style="width:41%">4.1</div></div></div>
+    </div>
+    <div class="chart-card">
+      <h4>Speed (parts/hour)</h4>
+      <div class="bar-row"><span class="bar-label">Groq</span><div class="bar-track"><div class="bar-fill groq" style="width:90%">~700+</div></div></div>
+      <div class="bar-row"><span class="bar-label">Sonnet</span><div class="bar-track"><div class="bar-fill sonnet" style="width:9%">69</div></div></div>
+      <div class="bar-row"><span class="bar-label">Opus</span><div class="bar-track"><div class="bar-fill opus" style="width:10%">75</div></div></div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <h2>Per-Part Comparison</h2>
+    <p>44 parts across 22 semiconductor equipment manufacturers. <span style="color:var(--green)">Green</span> = best attribute count. <span style="color:var(--red)">Red</span> = unclassified or 0 attrs. <span style="color:var(--yellow)">Yellow</span> = likely misclassification.</p>
+  </div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Mfg Part Number</th>
+          <th>Manufacturer</th>
+          <th>Groq Class</th>
+          <th>Groq Attrs</th>
+          <th>Sonnet Class</th>
+          <th>Sonnet Attrs</th>
+          <th>Opus Class</th>
+          <th>Opus Attrs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td class="pn">91251A197</td><td>McMaster-Carr</td><td>Socket Head Cap Screw</td><td class="attr-best">12</td><td>Cap Screw</td><td>11</td><td>Cap Screw</td><td class="attr-best">12</td></tr>
+        <tr><td>2</td><td class="pn">SY3120-5LZD-M5</td><td>SMC</td><td>Solenoid Valve</td><td class="attr-best">4</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>3</td><td class="pn">HSR15R</td><td>THK</td><td>Linear Block</td><td class="attr-best">11</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>4</td><td class="pn">6200ZZ</td><td>NTN</td><td>Deep Groove Ball Bearing</td><td>4</td><td>Deep Groove Ball Bearing</td><td>3</td><td>Deep Groove Ball Bearing</td><td class="attr-best">6</td></tr>
+        <tr><td>5</td><td class="pn">SS-400-1-4</td><td>Swagelok</td><td>Tube Fitting</td><td>3</td><td>Tube Fitting</td><td class="attr-best">4</td><td>Tube Fitting</td><td>3</td></tr>
+        <tr><td>6</td><td class="pn">2-012-N674-70</td><td>Parker</td><td>O-Ring</td><td>6</td><td>O-Ring</td><td>6</td><td>O-Ring</td><td class="attr-best">7</td></tr>
+        <tr><td>7</td><td class="pn">FU-35FA</td><td>Keyence</td><td>Fiber Optic Sensor</td><td>4</td><td class="cls-none">Unknown</td><td>4</td><td class="cls-mismatch">Filter</td><td class="attr-best">5</td></tr>
+        <tr><td>8</td><td class="pn">E2E-X5ME1</td><td>Omron</td><td>Proximity Sensor</td><td class="attr-best">10</td><td class="cls-none">Unknown</td><td>3</td><td class="cls-none">Unclassified</td><td>5</td></tr>
+        <tr><td>9</td><td class="pn">DSNU-16-25-P-A</td><td>Festo</td><td>Pneumatic Cylinder</td><td class="attr-best">6</td><td>Pneumatic Cylinder</td><td>5</td><td>Pneumatic Cylinder</td><td>5</td></tr>
+        <tr><td>10</td><td class="pn">HGH20CA</td><td>Hiwin</td><td>Linear Block</td><td class="attr-best">16</td><td>Linear Guide</td><td>2</td><td>Linear Guide</td><td>3</td></tr>
+        <tr><td>11</td><td class="pn">1-794106-0</td><td>TE Connectivity</td><td>PCB Header</td><td class="attr-best">6</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td>3</td></tr>
+        <tr><td>12</td><td class="pn">6200LLB</td><td>NTN</td><td>Deep Groove Ball Bearing</td><td class="attr-best">11</td><td>Deep Groove Ball Bearing</td><td>6</td><td>Deep Groove Ball Bearing</td><td>7</td></tr>
+        <tr><td>13</td><td class="pn">SHCB-M4-12</td><td>Misumi</td><td>Captive Panel Screw</td><td>6</td><td class="cls-mismatch">Spring</td><td>7</td><td class="cls-mismatch">Spring</td><td class="attr-best">9</td></tr>
+        <tr><td>14</td><td class="pn">4KB110-06-B</td><td>CKD</td><td>Solenoid Valve</td><td class="attr-best">15</td><td class="cls-mismatch">Screw</td><td class="attr-zero">0</td><td class="cls-mismatch">Screw</td><td>8</td></tr>
+        <tr><td>15</td><td class="pn">A505-40-000</td><td>Edwards</td><td>Exhaust Nozzle</td><td>2</td><td class="cls-mismatch">Seal</td><td class="attr-best">3</td><td class="cls-none">Unclassified</td><td>2</td></tr>
+        <tr><td>16</td><td class="pn">61532-KAGD-AKR1</td><td>VAT Group</td><td>Butterfly Vacuum Valve</td><td class="attr-best">5</td><td>Vacuum Valve</td><td>3</td><td>Vacuum Valve</td><td class="attr-best">5</td></tr>
+        <tr><td>17</td><td class="pn">H22-100-0615</td><td>Entegris</td><td>Wafer Carrier</td><td class="attr-best">5</td><td>Wafer Carrier</td><td class="attr-zero">0</td><td>Wafer Carrier</td><td>3</td></tr>
+        <tr><td>18</td><td class="pn">11104879</td><td>Volvo</td><td class="cls-none">Unclassified</td><td>3</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>19</td><td class="pn">CRB4010</td><td>IKO</td><td>Crossed Roller Bearing</td><td class="attr-zero">0</td><td class="cls-mismatch">Ring</td><td>3</td><td class="cls-mismatch">Ring</td><td class="attr-best">4</td></tr>
+        <tr><td>20</td><td class="pn">PLF010</td><td>Pall</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-mismatch">O-Ring</td><td>3</td><td>Filter</td><td class="attr-best">5</td></tr>
+        <tr><td>21</td><td class="pn">722B13TCD2FA</td><td>MKS Instruments</td><td>Mass Flow Controller</td><td class="attr-zero">0</td><td class="cls-mismatch">Filter</td><td class="attr-best">6</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>22</td><td class="pn">25N150FEWS</td><td>Specialty Bolt</td><td class="cls-none">Unclassified</td><td>2</td><td>Flat Washer</td><td class="attr-best">8</td><td>Fender Washer</td><td class="attr-best">8</td></tr>
+        <tr><td>23</td><td class="pn">92148A261</td><td>McMaster-Carr</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>24</td><td class="pn">CDQSB16-10D</td><td>SMC</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-best">5</td></tr>
+        <tr><td>25</td><td class="pn">HSR20R</td><td>THK</td><td>Linear Guide Block</td><td class="attr-zero">0</td><td class="cls-mismatch">Ball Screw</td><td>1</td><td class="cls-mismatch">Ball Screw</td><td class="attr-best">5</td></tr>
+        <tr><td>26</td><td class="pn">6201ZZ</td><td>NSK</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Deep Groove Ball Bearing</td><td>5</td><td>Deep Groove Ball Bearing</td><td class="attr-best">6</td></tr>
+        <tr><td>27</td><td class="pn">SS-600-1-4</td><td>Swagelok</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Tube Fitting</td><td>3</td><td>Tube Fitting</td><td class="attr-best">4</td></tr>
+        <tr><td>28</td><td class="pn">2-013-N674-70</td><td>Parker</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>O-Ring</td><td>5</td><td>O-Ring</td><td class="attr-best">6</td></tr>
+        <tr><td>29</td><td class="pn">FS-N11MN</td><td>Keyence</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Photoelectric Sensor</td><td>2</td><td>Photoelectric Sensor</td><td class="attr-best">4</td></tr>
+        <tr><td>30</td><td class="pn">E3Z-D62</td><td>Omron</td><td>Proximity Sensor</td><td class="attr-zero">0</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td>Photoelectric Sensor</td><td class="attr-best">4</td></tr>
+        <tr><td>31</td><td class="pn">DSNU-16-50-P-A</td><td>Festo</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Pneumatic Cylinder</td><td>3</td><td>Pneumatic Cylinder</td><td class="attr-best">7</td></tr>
+        <tr><td>32</td><td class="pn">MGN12C</td><td>Hiwin</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Linear Guide</td><td class="attr-best">6</td><td>Linear Guide</td><td>3</td></tr>
+        <tr><td>33</td><td class="pn">282834-2</td><td>TE Connectivity</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-mismatch">Terminal</td><td class="attr-zero">0</td><td>Connector</td><td class="attr-best">4</td></tr>
+        <tr><td>34</td><td class="pn">6201LLB</td><td>NTN</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-mismatch">Ring</td><td class="attr-best">7</td><td class="cls-mismatch">Ring</td><td>3</td></tr>
+        <tr><td>35</td><td class="pn">SHCB-M5-16</td><td>Misumi</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Socket Head Cap Screw</td><td>6</td><td class="cls-mismatch">Spacer</td><td class="attr-best">8</td></tr>
+        <tr><td>36</td><td class="pn">SSD-L-16-10</td><td>CKD</td><td class="cls-none">Unclassified</td><td>2</td><td>Pneumatic Cylinder</td><td class="attr-best">3</td><td>Pneumatic Cylinder</td><td class="attr-best">3</td></tr>
+        <tr><td>37</td><td class="pn">A505-09-000</td><td>Edwards</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Seal</td><td class="attr-best">3</td><td>Seal</td><td class="attr-best">3</td></tr>
+        <tr><td>38</td><td class="pn">61532-KEGQ-AKR1</td><td>VAT Group</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Vacuum Valve</td><td>3</td><td>Vacuum Valve</td><td class="attr-best">4</td></tr>
+        <tr><td>39</td><td class="pn">H22-150-0615</td><td>Entegris</td><td>Wafer Carrier</td><td class="attr-zero">0</td><td>Wafer Carrier</td><td class="attr-best">3</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>40</td><td class="pn">11104880</td><td>Volvo</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>41</td><td class="pn">CRB5013</td><td>IKO</td><td class="cls-none">Unclassified</td><td class="attr-best">10</td><td class="cls-mismatch">Ring</td><td class="attr-zero">0</td><td class="cls-mismatch">Filter</td><td>5</td></tr>
+        <tr><td>42</td><td class="pn">PLF020</td><td>Pall</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td class="cls-none">Unknown</td><td class="attr-zero">0</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>43</td><td class="pn">627D01TDC1B</td><td>MKS Instruments</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Pressure Sensor</td><td>1</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td></tr>
+        <tr><td>44</td><td class="pn">25N200FEWS</td><td>Specialty Bolt</td><td class="cls-none">Unclassified</td><td class="attr-zero">0</td><td>Hex Nut</td><td class="attr-best">8</td><td>Hex Nut</td><td class="attr-best">8</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-header"><h2>Key Insights</h2></div>
+  <div class="insights">
+    <div class="insight-card">
+      <h4 style="color:var(--orange)">Groq (llama-3.3-70b)</h4>
+      <ul>
+        <li>Fastest by 10x (~5s/part vs ~50s/part for Claude Code CLI)</li>
+        <li>Best single-part score: HGH20CA got 16 attrs (highest across all models)</li>
+        <li>50% of parts unclassified due to network timeouts during parallel run</li>
+        <li>When scraping succeeds, classification and extraction quality is excellent</li>
+        <li>Free tier but requires external API key (not enterprise-compatible)</li>
+      </ul>
+    </div>
+    <div class="insight-card">
+      <h4 style="color:var(--blue)">Claude Sonnet</h4>
+      <ul>
+        <li>Highest classification rate: 75% (33/44 parts classified from web content)</li>
+        <li>Some misclassifications: PLF010 (filter) as "O-Ring", HSR20R (linear guide) as "Ball Screw"</li>
+        <li>70% of parts got attributes (reliable extraction)</li>
+        <li>Enterprise-friendly: no external API keys, runs via Claude Code CLI</li>
+        <li>Best budget option for enterprise deployments</li>
+      </ul>
+    </div>
+    <div class="insight-card">
+      <h4 style="color:var(--accent)">Claude Opus</h4>
+      <ul>
+        <li>Highest attribute extraction: 80% of parts got attributes</li>
+        <li>Richest data: 4.1 avg attrs/part (32% more than Sonnet's 3.1)</li>
+        <li>Best at extracting from limited content - finds more attrs from same source</li>
+        <li>Most consistent: rarely returned 0 attrs when content was available</li>
+        <li>Slightly faster than Sonnet (48s vs 52s per part)</li>
+      </ul>
+    </div>
+    <div class="insight-card">
+      <h4 style="color:var(--green)">Recommendations</h4>
+      <ul>
+        <li><strong>Enterprise (no API keys):</strong> Opus for best quality, Sonnet for budget</li>
+        <li><strong>Standalone/dev:</strong> Groq is free and 10x faster (run solo, not parallel)</li>
+        <li><strong>Web classification works:</strong> 75% classified without Part Name column</li>
+        <li><strong>Bottleneck is scraping:</strong> ~80% of time spent on web scraping, not LLM</li>
+        <li><strong>Parallel runs hurt:</strong> Run benchmarks sequentially to avoid network contention</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-header"><h2>Test Configuration</h2></div>
+  <div class="insight-card" style="margin-bottom:48px">
+    <h4>Environment</h4>
+    <ul>
+      <li>Machine: Windows 11, Python 3.11+</li>
+      <li>Input: 44 parts, 2 per manufacturer, no Part Name (Mfg PN + Mfg Name only)</li>
+      <li>Manufacturers: McMaster-Carr, SMC, THK, NTN, Swagelok, Parker, Keyence, Omron, Festo, Hiwin, TE Connectivity, Misumi, CKD, Edwards, VAT Group, Entegris, Volvo, IKO, Pall, MKS Instruments, Specialty Bolt, NSK</li>
+      <li>Web scraping: curl_cffi (TLS fingerprint) + CloakBrowser stealth + DuckDuckGo fallback</li>
+      <li>Classification: Deterministic keyword extraction from web content (class_extractor.py) + LLM fallback</li>
+      <li>All 3 benchmarks ran in parallel, causing network contention (Groq most affected)</li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="footer">
+  PartClassifier LLM Benchmark Report &middot; Generated March 2026 &middot; digitalthreadai
+</div>
+
+</body>
+</html>

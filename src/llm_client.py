@@ -2,17 +2,28 @@
 Unified LLM client -- supports multiple providers through a single interface.
 
 Providers:
-  - groq       : Groq API (free, fast inference)
-  - openai     : OpenAI API (GPT-4o, GPT-4-turbo, etc.)
-  - anthropic  : Anthropic API (Claude Opus, Sonnet, Haiku)
-  - ollama     : Local Ollama server
-  - custom     : Any OpenAI-compatible API (set LLM_BASE_URL)
+  - groq         : Groq API (free, fast inference)
+  - openai       : OpenAI API (GPT-4o, GPT-4-turbo, etc.)
+  - anthropic    : Anthropic API (Claude Opus, Sonnet, Haiku)
+  - azure_openai : Azure OpenAI Service (enterprise)
+  - bedrock      : AWS Bedrock (Claude via AWS account)
+  - ollama       : Local Ollama server
+  - custom       : Any OpenAI-compatible API (set LLM_BASE_URL)
 
 Configuration is read from environment variables (or passed explicitly):
-  LLM_PROVIDER  = groq | openai | anthropic | ollama | custom
+  LLM_PROVIDER  = groq | openai | anthropic | azure_openai | bedrock | ollama | custom
   LLM_API_KEY   = your_api_key
   LLM_MODEL     = model name (optional -- each provider has a sensible default)
   LLM_BASE_URL  = custom endpoint (only needed for "custom" provider)
+
+Azure OpenAI additional env vars:
+  AZURE_OPENAI_ENDPOINT    = https://your-resource.openai.azure.com/
+  AZURE_OPENAI_API_VERSION = 2024-12-01-preview
+  AZURE_OPENAI_DEPLOYMENT  = your-deployment-name
+
+AWS Bedrock additional env vars:
+  AWS_REGION = us-east-1  (or your region)
+  (Uses default AWS credential chain: env vars, ~/.aws/credentials, IAM role, etc.)
 """
 
 import os
@@ -45,6 +56,28 @@ PROVIDER_PRESETS = {
         "needs_key": True,
         "key_hint": "sk-ant-...",
         "key_url": "https://console.anthropic.com/settings/keys",
+    },
+    "azure_openai": {
+        "base_url": None,  # set via AZURE_OPENAI_ENDPOINT
+        "default_model": "gpt-4o",
+        "label": "Azure OpenAI",
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+        "needs_key": True,
+        "key_hint": "Azure API key or use Azure AD token",
+        "key_url": "https://portal.azure.com",
+    },
+    "bedrock": {
+        "base_url": None,
+        "default_model": "anthropic.claude-sonnet-4-20250514-v1:0",
+        "label": "AWS Bedrock",
+        "models": [
+            "anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic.claude-opus-4-20250514-v1:0",
+            "anthropic.claude-haiku-4-5-20251001-v1:0",
+        ],
+        "needs_key": False,  # uses AWS credential chain
+        "key_hint": "Uses AWS credentials (env vars, ~/.aws/credentials, IAM role)",
+        "key_url": "https://console.aws.amazon.com/bedrock",
     },
     "ollama": {
         "base_url": "http://localhost:11434/v1",
@@ -86,7 +119,7 @@ class LLMClient:
         if not self.provider:
             self.provider = "groq"
 
-        if not self.api_key and self.provider != "ollama":
+        if not self.api_key and self.provider not in ("ollama", "bedrock"):
             raise ValueError(
                 "LLM_API_KEY not set. "
                 "See README.md for configuration instructions."
@@ -94,6 +127,10 @@ class LLMClient:
 
         if self.provider == "anthropic":
             self._init_anthropic()
+        elif self.provider == "azure_openai":
+            self._init_azure_openai()
+        elif self.provider == "bedrock":
+            self._init_bedrock()
         else:
             self._init_openai_compat()
 
@@ -140,6 +177,55 @@ class LLMClient:
 
         self._client = AsyncAnthropic(api_key=self.api_key)
         self._is_anthropic = True
+
+    def _init_azure_openai(self):
+        """Initialize for Azure OpenAI Service."""
+        try:
+            from openai import AsyncAzureOpenAI
+        except ImportError:
+            raise ImportError(
+                "The 'openai' package >= 1.0 is required for Azure OpenAI. "
+                "Install it with: pip install openai"
+            )
+
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview").strip()
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
+
+        if not endpoint:
+            raise ValueError(
+                "AZURE_OPENAI_ENDPOINT must be set when LLM_PROVIDER=azure_openai. "
+                "Example: https://your-resource.openai.azure.com/"
+            )
+
+        if not self.model:
+            self.model = deployment or PROVIDER_PRESETS["azure_openai"]["default_model"]
+
+        self._client = AsyncAzureOpenAI(
+            azure_endpoint=endpoint,
+            api_version=api_version,
+            api_key=self.api_key,
+            azure_deployment=deployment or None,
+        )
+        self._is_anthropic = False
+
+    def _init_bedrock(self):
+        """Initialize for AWS Bedrock (Claude via AWS account)."""
+        try:
+            from anthropic import AsyncAnthropicBedrock
+        except ImportError:
+            raise ImportError(
+                "The 'anthropic[bedrock]' package is required for LLM_PROVIDER=bedrock. "
+                "Install it with: pip install 'anthropic[bedrock]'"
+            )
+
+        region = os.getenv("AWS_REGION", "us-east-1").strip()
+
+        if not self.model:
+            self.model = PROVIDER_PRESETS["bedrock"]["default_model"]
+
+        self._client = AsyncAnthropicBedrock(aws_region=region)
+        self._is_anthropic = True  # Bedrock uses the same Anthropic message format
 
     async def chat(self, messages: list[dict], max_tokens: int = 1000) -> str:
         """
