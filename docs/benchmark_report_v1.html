@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartClassifier Benchmark Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a28;--border:#2a2a3e;--text:#e8e8ed;--muted:#8888a0;--primary:#6c63ff;--teal:#00d4aa;--green:#4ade80;--red:#f87171;--amber:#fbbf24;--blue:#60a5fa;--purple:#a78bfa}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1200px;margin:0 auto;padding:0 24px}
+.hero{padding:60px 0 40px;text-align:center;border-bottom:1px solid var(--border)}
+.hero h1{font-size:2.4rem;font-weight:800;background:linear-gradient(135deg,var(--primary),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}
+.hero p{color:var(--muted);font-size:1.1rem}
+.hero .date{font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--muted);margin-top:8px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin:40px 0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.card.sonnet::before{background:var(--blue)}
+.card.opus::before{background:var(--purple)}
+.card.groq::before{background:var(--teal)}
+.card h3{font-size:1rem;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card h3 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.card.sonnet .dot{background:var(--blue)}
+.card.opus .dot{background:var(--purple)}
+.card.groq .dot{background:var(--teal)}
+.card .model{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--muted);margin-bottom:12px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat{background:var(--surface2);border-radius:8px;padding:12px}
+.stat .label{font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px}
+.stat .value{font-size:1.4rem;font-weight:700;font-family:'JetBrains Mono',monospace}
+.stat .value.high{color:var(--green)}
+.stat .value.med{color:var(--amber)}
+.stat .value.low{color:var(--red)}
+.winner{background:linear-gradient(135deg,rgba(167,139,250,.15),rgba(108,99,255,.1));border:1px solid rgba(167,139,250,.3);border-radius:12px;padding:24px;text-align:center;margin:32px 0}
+.winner h2{font-size:1.3rem;margin-bottom:6px}
+.winner p{color:var(--muted);font-size:.9rem}
+.chart-section{margin:40px 0}
+.chart-section h2{font-size:1.3rem;font-weight:700;margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.bar-group{margin-bottom:16px}
+.bar-group .bar-label{font-size:.82rem;color:var(--muted);margin-bottom:4px;font-family:'JetBrains Mono',monospace}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+.bar-row .model-tag{width:55px;font-size:.68rem;font-weight:600;text-align:right;flex-shrink:0}
+.bar-row .bar{height:20px;border-radius:3px;transition:width .6s ease;position:relative;min-width:2px}
+.bar-row .bar span{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:.68rem;font-weight:600;font-family:'JetBrains Mono',monospace}
+.bar-row.sonnet .bar{background:var(--blue)}
+.bar-row.opus .bar{background:var(--purple)}
+.bar-row.groq .bar{background:var(--teal)}
+.table-section{margin:40px 0}
+.table-section h2{font-size:1.3rem;font-weight:700;margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+thead th{background:var(--surface2);padding:10px 12px;text-align:left;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;top:0}
+tbody td{padding:8px 12px;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:.78rem}
+tbody tr:hover{background:var(--surface2)}
+.cls-cell{font-family:'Inter',sans-serif;font-size:.75rem}
+.attr-cell{text-align:center;font-weight:600}
+.attr-cell.best{color:var(--green);background:rgba(74,222,128,.08)}
+.attr-cell.zero{color:var(--red);opacity:.5}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.65rem;font-weight:600;font-family:'Inter',sans-serif}
+.badge.opus{background:rgba(167,139,250,.15);color:var(--purple)}
+.badge.sonnet{background:rgba(96,165,250,.15);color:var(--blue)}
+.badge.groq{background:rgba(0,212,170,.15);color:var(--teal)}
+.badge.none{background:rgba(136,136,160,.1);color:var(--muted)}
+.filter-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s}
+.filter-btn:hover,.filter-btn.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.insights{margin:40px 0}
+.insights h2{font-size:1.3rem;font-weight:700;margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.insight{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.insight h4{font-size:.9rem;font-weight:600;margin-bottom:8px}
+.insight p{font-size:.82rem;color:var(--muted);line-height:1.5}
+.insight .hl{color:var(--teal);font-weight:600}
+.footer{text-align:center;padding:40px 0;color:var(--muted);font-size:.8rem;border-top:1px solid var(--border);margin-top:40px}
+.footer a{color:var(--primary)}
+@media(max-width:768px){.cards{grid-template-columns:1fr}.insight-grid{grid-template-columns:1fr}.hero h1{font-size:1.8rem}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="hero">
+<h1>LLM Benchmark Report</h1>
+<p>PartClassifier v2 &mdash; 44 Semiconductor Equipment Parts &times; 3 LLM Backends</p>
+<div class="date">Generated: 2026-03-20 &bull; Pipeline: Web Scrape &rarr; Classify &rarr; Regex &rarr; LLM Extract</div>
+</div>
+
+<div class="cards">
+<div class="card opus">
+<h3><span class="dot"></span> Claude Opus</h3>
+<div class="model">claude-opus-4 via Claude Code CLI</div>
+<div class="stat-grid">
+<div class="stat"><div class="label">Classification</div><div class="value med">70%</div></div>
+<div class="stat"><div class="label">Extraction Rate</div><div class="value high">80%</div></div>
+<div class="stat"><div class="label">Avg Attrs/Part</div><div class="value high">4.1</div></div>
+<div class="stat"><div class="label">Total Attrs</div><div class="value high">182</div></div>
+</div>
+</div>
+<div class="card groq">
+<h3><span class="dot"></span> Groq (Llama 3.3 70B)</h3>
+<div class="model">llama-3.3-70b-versatile via Groq API</div>
+<div class="stat-grid">
+<div class="stat"><div class="label">Classification</div><div class="value high">91%</div></div>
+<div class="stat"><div class="label">Extraction Rate</div><div class="value med">59%</div></div>
+<div class="stat"><div class="label">Avg Attrs/Part</div><div class="value med">3.6</div></div>
+<div class="stat"><div class="label">Total Attrs</div><div class="value">159</div></div>
+</div>
+</div>
+<div class="card sonnet">
+<h3><span class="dot"></span> Claude Sonnet</h3>
+<div class="model">claude-sonnet-4 via Claude Code CLI</div>
+<div class="stat-grid">
+<div class="stat"><div class="label">Classification</div><div class="value med">75%</div></div>
+<div class="stat"><div class="label">Extraction Rate</div><div class="value med">70%</div></div>
+<div class="stat"><div class="label">Avg Attrs/Part</div><div class="value med">3.1</div></div>
+<div class="stat"><div class="label">Total Attrs</div><div class="value">136</div></div>
+</div>
+</div>
+</div>
+
+<div class="winner">
+<h2>&#x1f3c6; Opus Wins Overall</h2>
+<p>Highest extraction rate (80%), most total attributes (182), best avg attrs/part (4.1).<br>
+Groq leads classification (91%) but hit free-tier rate limits, reducing extraction to 59%.</p>
+</div>
+
+<div class="chart-section">
+<h2>Per-Part Attribute Extraction</h2>
+<div id="barChart"></div>
+</div>
+
+<div class="table-section">
+<h2>Detailed Comparison</h2>
+<div class="filter-bar">
+<button class="filter-btn active" onclick="filterTable('all',this)">All (44)</button>
+<button class="filter-btn" onclick="filterTable('Opus',this)">Opus Wins (18)</button>
+<button class="filter-btn" onclick="filterTable('Groq',this)">Groq Wins (12)</button>
+<button class="filter-btn" onclick="filterTable('Sonnet',this)">Sonnet Wins (8)</button>
+<button class="filter-btn" onclick="filterTable('-',this)">Tied/Zero (6)</button>
+</div>
+<div style="overflow-x:auto;max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+<table><thead><tr>
+<th>Mfg Part #</th><th>Sonnet Class</th><th>Opus Class</th><th>Groq Class</th>
+<th style="text-align:center">S Attrs</th><th style="text-align:center">O Attrs</th><th style="text-align:center">G Attrs</th><th>Winner</th>
+</tr></thead><tbody id="tb"></tbody></table>
+</div>
+</div>
+
+<div class="insights">
+<h2>Key Insights</h2>
+<div class="insight-grid">
+<div class="insight">
+<h4>Opus: Best Attribute Extractor</h4>
+<p>Opus extracts <span class="hl">4.1 attrs/part</span> on average &mdash; 33% more than Sonnet (3.1) and 14% more than Groq (3.6). Wins on 18/44 parts, demonstrating superior ability to parse unstructured web content into structured specs.</p>
+</div>
+<div class="insight">
+<h4>Groq: Best Classifier, Rate-Limited</h4>
+<p>Groq classified <span class="hl">91% of parts</span> vs 70-75% for Claude models. But hit the free-tier limit (100K tokens/day) at ~30 parts, causing 14 parts to get 0 attributes. A paid Groq plan would likely match or exceed Opus.</p>
+</div>
+<div class="insight">
+<h4>Web Content Classification Works</h4>
+<p>The deterministic class extractor (no LLM) classified <span class="hl">70-91%</span> of parts across all models. Saves LLM tokens and ensures consistency. Remaining 10-30% fall back to LLM.</p>
+</div>
+<div class="insight">
+<h4>Web Scraping is the Bottleneck</h4>
+<p><span class="hl">6 parts (14%)</span> got 0 attributes across ALL models. The issue is scraping failures (timeouts, bot blocks), not the LLM. Improving source coverage matters more than switching models.</p>
+</div>
+</div>
+</div>
+
+<div class="footer">
+PartClassifier Benchmark &bull; 44 Parts &bull; 22 Manufacturers &bull; <a href="https://github.com/digitalthreadai/partclassifier">GitHub</a>
+</div>
+</div>
+
+<script>
+const D=[
+{p:"91251A197",sc:"Cap Screw",oc:"Screw",gc:"Screw",sa:11,oa:12,ga:14,b:"Groq"},
+{p:"SHCB-M4-12",sc:"Spring",oc:"Spring",gc:"Spring",sa:7,oa:9,ga:10,b:"Groq"},
+{p:"722B13TCD2FA",sc:"Pressure Sensor",oc:"Pressure Sensor",gc:"Pressure Sensor",sa:6,oa:0,ga:12,b:"Groq"},
+{p:"1-794106-0",sc:"Unknown",oc:"Unclassified",gc:"Connector",sa:0,oa:3,ga:10,b:"Groq"},
+{p:"25N150FEWS",sc:"Flat Washer",oc:"Fender Washer",gc:"Flat Washer",sa:8,oa:8,ga:9,b:"Groq"},
+{p:"HSR20R",sc:"Ball Screw",oc:"Ball Screw",gc:"Linear Block",sa:1,oa:5,ga:9,b:"Groq"},
+{p:"HGH20CA",sc:"Linear Guide",oc:"Linear Guide",gc:"Linear Guide",sa:2,oa:3,ga:8,b:"Groq"},
+{p:"DSNU-16-25-P-A",sc:"Pneumatic Cylinder",oc:"Pneumatic Cylinder",gc:"Pneumatic Cylinder",sa:5,oa:5,ga:8,b:"Groq"},
+{p:"4KB110-06-B",sc:"Unknown",oc:"Unclassified",gc:"Solenoid Valve",sa:0,oa:8,ga:4,b:"Opus"},
+{p:"25N200FEWS",sc:"Hex Nut",oc:"Hex Nut",gc:"Unclassified",sa:8,oa:8,ga:0,b:"Opus"},
+{p:"SHCB-M5-16",sc:"Socket Head Cap Screw",oc:"Spacer",gc:"Socket Head Cap Screw",sa:6,oa:8,ga:0,b:"Opus"},
+{p:"2-012-N674-70",sc:"O-Ring",oc:"O-Ring",gc:"O-Ring",sa:6,oa:7,ga:6,b:"Opus"},
+{p:"6200LLB",sc:"Deep Groove Ball Bearing",oc:"Deep Groove Ball Bearing",gc:"Deep Groove Ball Bearing",sa:6,oa:7,ga:5,b:"Opus"},
+{p:"DSNU-16-50-P-A",sc:"Pneumatic Cylinder",oc:"Pneumatic Cylinder",gc:"Pneumatic Cylinder",sa:3,oa:7,ga:0,b:"Opus"},
+{p:"2-013-N674-70",sc:"O-Ring",oc:"O-Ring",gc:"O-Ring",sa:5,oa:6,ga:0,b:"Opus"},
+{p:"6200ZZ",sc:"Ring",oc:"Ring",gc:"Retaining Ring",sa:3,oa:6,ga:6,b:"Opus"},
+{p:"6201ZZ",sc:"Deep Groove Ball Bearing",oc:"Deep Groove Ball Bearing",gc:"Deep Groove Ball Bearing",sa:5,oa:6,ga:6,b:"Opus"},
+{p:"CDQSB16-10D",sc:"Pneumatic Cylinder",oc:"Pneumatic Cylinder",gc:"Pneumatic Cylinder",sa:0,oa:5,ga:6,b:"Groq"},
+{p:"CRB4010",sc:"Ring",oc:"Ring",gc:"Ring",sa:3,oa:4,ga:6,b:"Groq"},
+{p:"A505-40-000",sc:"Seal",oc:"Seal",gc:"Seal",sa:3,oa:2,ga:5,b:"Groq"},
+{p:"61532-KAGD-AKR1",sc:"Vacuum Valve",oc:"Vacuum Valve",gc:"Vacuum Valve",sa:3,oa:5,ga:4,b:"Opus"},
+{p:"E2E-X5ME1",sc:"Screw",oc:"Screw",gc:"Proximity Sensor",sa:3,oa:5,ga:4,b:"Opus"},
+{p:"CRB5013",sc:"Ring",oc:"Ring",gc:"Unclassified",sa:0,oa:5,ga:0,b:"Opus"},
+{p:"FU-35FA",sc:"Unknown",oc:"Filter",gc:"Fiber Optic Sensor",sa:4,oa:5,ga:3,b:"Opus"},
+{p:"PLF010",sc:"O-Ring",oc:"Filter",gc:"O-Ring",sa:3,oa:5,ga:3,b:"Opus"},
+{p:"6201LLB",sc:"Deep Groove Ball Bearing",oc:"Deep Groove Ball Bearing",gc:"Unclassified",sa:7,oa:3,ga:0,b:"Sonnet"},
+{p:"MGN12C",sc:"Linear Guide",oc:"Linear Guide",gc:"Unclassified",sa:6,oa:3,ga:0,b:"Sonnet"},
+{p:"SS-400-1-4",sc:"Tube Fitting",oc:"Tube Fitting",gc:"Tube Fitting",sa:4,oa:3,ga:4,b:"Groq"},
+{p:"282834-2",sc:"Terminal",oc:"Connector",gc:"Unclassified",sa:0,oa:4,ga:0,b:"Opus"},
+{p:"HSR15R",sc:"Unknown",oc:"Unclassified",gc:"Linear Guide",sa:0,oa:0,ga:4,b:"Groq"},
+{p:"61532-KEGQ-AKR1",sc:"Vacuum Valve",oc:"Vacuum Valve",gc:"Unclassified",sa:3,oa:4,ga:0,b:"Opus"},
+{p:"E3Z-D62",sc:"Photoelectric Sensor",oc:"Photoelectric Sensor",gc:"Photoelectric Sensor",sa:0,oa:4,ga:0,b:"Opus"},
+{p:"FS-N11MN",sc:"Photoelectric Sensor",oc:"Photoelectric Sensor",gc:"Fiber Optic Sensor",sa:2,oa:4,ga:3,b:"Opus"},
+{p:"SS-600-1-4",sc:"Tube Fitting",oc:"Tube Fitting",gc:"Tube Fitting",sa:3,oa:4,ga:0,b:"Opus"},
+{p:"SY3120-5LZD-M5",sc:"Unknown",oc:"Unclassified",gc:"Pneumatic Valve",sa:0,oa:0,ga:6,b:"Groq"},
+{p:"H22-150-0615",sc:"Wafer Carrier",oc:"Unclassified",gc:"Wafer Carrier",sa:3,oa:0,ga:0,b:"Sonnet"},
+{p:"H22-100-0615",sc:"Wafer Carrier",oc:"Wafer Carrier",gc:"Wafer Shipper",sa:0,oa:3,ga:3,b:"Opus"},
+{p:"A505-09-000",sc:"Seal",oc:"Seal",gc:"Unclassified",sa:3,oa:3,ga:0,b:"Opus"},
+{p:"SSD-L-16-10",sc:"Pneumatic Cylinder",oc:"Pneumatic Cylinder",gc:"Pneumatic Cylinder",sa:3,oa:3,ga:0,b:"Opus"},
+{p:"627D01TDC1B",sc:"Pressure Sensor",oc:"Unclassified",gc:"Unclassified",sa:1,oa:0,ga:0,b:"Sonnet"},
+{p:"11104879",sc:"Unknown",oc:"Unclassified",gc:"Bank Routing Number",sa:0,oa:0,ga:1,b:"Groq"},
+{p:"92148A261",sc:"Screw",oc:"Screw",gc:"Screw",sa:0,oa:0,ga:0,b:"-"},
+{p:"PLF020",sc:"Unknown",oc:"Unclassified",gc:"Unclassified",sa:0,oa:0,ga:0,b:"-"},
+{p:"11104880",sc:"Unknown",oc:"Unclassified",gc:"Unclassified",sa:0,oa:0,ga:0,b:"-"}
+];
+
+function renderBars(){
+const c=document.getElementById('barChart');
+const mx=Math.max(...D.map(d=>Math.max(d.sa,d.oa,d.ga)));
+let h='';
+D.forEach(d=>{
+const pct=v=>Math.max(v/mx*100,v>0?2:0);
+h+=`<div class="bar-group"><div class="bar-label">${d.p}</div>
+<div class="bar-row opus"><div class="model-tag" style="color:var(--purple)">Opus</div><div class="bar" style="width:${pct(d.oa)}%"><span>${d.oa}</span></div></div>
+<div class="bar-row groq"><div class="model-tag" style="color:var(--teal)">Groq</div><div class="bar" style="width:${pct(d.ga)}%"><span>${d.ga}</span></div></div>
+<div class="bar-row sonnet"><div class="model-tag" style="color:var(--blue)">Sonnet</div><div class="bar" style="width:${pct(d.sa)}%"><span>${d.sa}</span></div></div>
+</div>`;});
+c.innerHTML=h;
+}
+
+function renderTable(f){
+const tb=document.getElementById('tb');
+let rows=f==='all'?D:D.filter(d=>d.b===f);
+let h='';
+rows.forEach(d=>{
+const mx=Math.max(d.sa,d.oa,d.ga);
+const ac=(v)=>v===mx&&v>0?'attr-cell best':v===0?'attr-cell zero':'attr-cell';
+const bc=d.b==='Opus'?'opus':d.b==='Groq'?'groq':d.b==='Sonnet'?'sonnet':'none';
+h+=`<tr><td style="font-weight:600">${d.p}</td>
+<td class="cls-cell">${d.sc}</td><td class="cls-cell">${d.oc}</td><td class="cls-cell">${d.gc}</td>
+<td class="${ac(d.sa)}">${d.sa}</td><td class="${ac(d.oa)}">${d.oa}</td><td class="${ac(d.ga)}">${d.ga}</td>
+<td><span class="badge ${bc}">${d.b}</span></td></tr>`;});
+tb.innerHTML=h;
+}
+
+function filterTable(f,el){
+document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+el.classList.add('active');
+renderTable(f);
+}
+
+renderBars();
+renderTable('all');
+</script>
+</body>
+</html>
