@@ -45,16 +45,13 @@ _CACHE_PATH = Path(__file__).parent.parent / "url_cache.json"
 
 
 def _load_cache() -> dict:
-    if _CACHE_PATH.exists():
-        try:
-            return json.loads(_CACHE_PATH.read_text())
-        except Exception:
-            pass
-    return {}
+    from src.shared import load_cache
+    return load_cache(_CACHE_PATH)
 
 
 def _save_cache(cache: dict) -> None:
-    _CACHE_PATH.write_text(json.dumps(cache, indent=2))
+    from src.shared import save_cache
+    save_cache(cache, _CACHE_PATH)
 
 
 class ClaudeCodeClient:
@@ -79,7 +76,7 @@ class ClaudeCodeClient:
         try:
             result = subprocess.run(
                 [self.claude_cmd, "--version"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
             )
             if result.returncode != 0:
                 raise RuntimeError(
@@ -120,6 +117,8 @@ class ClaudeCodeClient:
                 input=prompt,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout,
                 env=env,
             )
@@ -346,12 +345,16 @@ class ClaudeCodeClient:
             "4. Extract the specifications\n\n"
             "IMPORTANT: Only use results from the trusted domains listed above.\n"
             "If no trusted domain has this part, return exactly: {}\n\n"
-            f"REQUIRED ATTRIBUTE NAMES (use these exact names where applicable):\n"
+            f"PRIORITY ATTRIBUTES (use these exact names where applicable):\n"
             f"  {', '.join(schema_attrs)}\n\n"
+            f"Also extract ALL other specifications found on the page.\n"
+            f"Maximize coverage — dimensions, material, finish, hardness, tolerances, "
+            f"standards, compliance, and any other technical specs present.\n\n"
             f"UNIT RULE: {convert_note}\n\n"
             "RULES:\n"
             f"- All dimensional values must be in {unit_short}\n"
-            "- Use the EXACT attribute names listed above — do NOT invent synonyms\n"
+            "- For priority attributes, use the EXACT names listed above\n"
+            "- For other attributes, use names as they appear in the source\n"
             "- Include Material, Hardness, Standard if present in the source\n"
             "- Omit attributes not found in the source\n\n"
             "RESPOND WITH ONLY a flat JSON object.\n"

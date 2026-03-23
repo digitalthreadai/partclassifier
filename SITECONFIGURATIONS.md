@@ -28,7 +28,9 @@ venv\Scripts\activate        # Windows
 pip install -r requirements.txt
 ```
 
-This installs 9 packages: `openai`, `openpyxl`, `curl_cffi`, `beautifulsoup4`, `python-dotenv`, `anthropic`, `httpx`, `streamlit`, `cloakbrowser`.
+This installs: `openai`, `openpyxl`, `curl_cffi`, `beautifulsoup4`, `python-dotenv`, `anthropic`, `httpx`, `streamlit`.
+
+CloakBrowser is optional and installed separately (see Section 4).
 
 ---
 
@@ -71,6 +73,27 @@ LLM_MODEL=claude-sonnet-4-20250514
 Get key: https://console.anthropic.com/settings/keys
 Other models: `claude-opus-4-20250514`, `claude-haiku-4-5-20251001`
 
+### Azure OpenAI (enterprise)
+
+```env
+LLM_PROVIDER=azure_openai
+LLM_API_KEY=your_azure_api_key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+```
+
+Get access: https://portal.azure.com
+
+### AWS Bedrock (enterprise)
+
+```env
+LLM_PROVIDER=bedrock
+AWS_REGION=us-east-1
+```
+
+No API key needed -- uses default AWS credential chain (env vars, `~/.aws/credentials`, IAM role).
+
 ### Ollama (local, free)
 
 ```env
@@ -94,7 +117,7 @@ LLM_MODEL=your-model-name
 
 ## 3. Distributor API Keys (all optional)
 
-Higher-quality structured data. Bypasses LLM extraction when 3+ attributes found.
+Higher-quality structured data. When an API returns 3+ attributes, LLM extraction is skipped entirely.
 
 ### DigiKey (free)
 
@@ -131,7 +154,7 @@ MCMASTER_CLIENT_KEY=path/to/client-key.pem
 
 ## 4. Stealth Browser (optional)
 
-CloakBrowser enables scraping bot-protected sites like McMaster-Carr directly.
+CloakBrowser enables scraping bot-protected sites like McMaster-Carr, Fastenal, and Grainger.
 
 ```bash
 pip install cloakbrowser
@@ -142,6 +165,12 @@ First run downloads ~200MB Chromium binary automatically. To disable:
 ```env
 STEALTH_BROWSER_ENABLED=false
 ```
+
+Features:
+- 33 C++ source-level patches to Chromium
+- Bypasses Cloudflare, reCAPTCHA v3, FingerprintJS, Turnstile
+- Fresh browser context per scrape
+- Direct URL patterns for McMaster-Carr, Fastenal, Grainger
 
 ---
 
@@ -167,10 +196,14 @@ A sample file with 4 parts is included in the repo.
 
 | Variable | Required | Description | Where to Get |
 |----------|----------|-------------|--------------|
-| `LLM_PROVIDER` | Yes (API key mode) | groq, openai, anthropic, ollama, custom | Choose your provider |
-| `LLM_API_KEY` | Yes* | Provider API key (*not needed for Ollama) | Provider console |
+| `LLM_PROVIDER` | Yes (API key mode) | groq, openai, anthropic, azure_openai, bedrock, ollama, custom | Choose your provider |
+| `LLM_API_KEY` | Yes* | Provider API key (*not needed for Ollama/Bedrock) | Provider console |
 | `LLM_MODEL` | No | Override default model | Provider docs |
 | `LLM_BASE_URL` | No | Custom endpoint (custom provider only) | Your API admin |
+| `AZURE_OPENAI_ENDPOINT` | Azure only | Azure resource endpoint | portal.azure.com |
+| `AZURE_OPENAI_API_VERSION` | No | API version (default: 2024-12-01-preview) | Azure docs |
+| `AZURE_OPENAI_DEPLOYMENT` | No | Deployment name | Azure portal |
+| `AWS_REGION` | No | AWS region (default: us-east-1) | AWS console |
 | `DIGIKEY_CLIENT_ID` | No | DigiKey OAuth2 client ID | developer.digikey.com |
 | `DIGIKEY_CLIENT_SECRET` | No | DigiKey OAuth2 secret | developer.digikey.com |
 | `MOUSER_API_KEY` | No | Mouser Search API key | api.mouser.com |
@@ -196,9 +229,12 @@ Open http://localhost:8501. Configure provider in sidebar, select input file, cl
 
 ```bash
 python main.py
+python main.py --input path/to/input.xlsx --output path/to/output/
+python main.py --no-cache        # bypass LLM cache
+python main.py --clear-cache     # delete cache before run
 ```
 
-Requires `.env` configured. Processes all parts sequentially.
+Requires `.env` configured. Processes all parts sequentially with resume capability.
 
 ### Option C: Claude Code CLI (zero API keys)
 
@@ -206,6 +242,7 @@ Requires `.env` configured. Processes all parts sequentially.
 python main_cc.py                # 4 parallel workers
 python main_cc.py --workers 8   # 8 workers (faster)
 python main_cc.py --fresh        # ignore previous progress
+python main_cc.py --workers 1   # sequential mode (for debugging)
 ```
 
 Requires `claude` CLI installed and on PATH. No `.env` needed.
@@ -221,31 +258,82 @@ output/
   Flat Washer.xlsx
   Split Lock Washer.xlsx
   Internal Tooth Lock Washer.xlsx
+  Deep Groove Ball Bearing.xlsx
+  Tube Fitting.xlsx
 ```
 
 Each file contains: original input columns + Part Class + Source URL + extracted attributes with canonical column names.
 
 ---
 
-## 9. Adding New Part Classes
+## 9. Cache Management
+
+### URL Cache (`url_cache.json`)
+- Maps manufacturer part numbers to best source URLs
+- 30-day TTL with automatic expiration
+- Shared across all execution modes
+- Safe to commit (public URLs only)
+
+### LLM Cache (`llm_cache.json`)
+- Classification cache: 90-day TTL
+- Extraction cache: 30-day TTL
+- Thread-safe with atomic writes
+- Use `--no-cache` to bypass, `--clear-cache` to delete
+
+### Metrics History (`metrics_history.json`)
+- Appended after each run
+- Tracks quality, cache effectiveness, regex/LLM agreement, timing
+
+---
+
+## 10. Adding New Part Classes
 
 Edit `src/attr_schema.py`:
 
-1. Add canonical attribute list to `CLASS_SCHEMAS`:
+1. The class name is likely already in `KNOWN_CLASSES` (60+ classes defined). If not, add it:
+```python
+KNOWN_CLASSES = [
+    ...
+    "My New Class",
+]
+```
+
+2. Add canonical attribute list to `CLASS_SCHEMAS`:
 ```python
 "My New Class": [
     "Attribute 1", "Attribute 2", "Material", "Finish",
 ],
 ```
 
-2. Add any alias variants to `ALIASES`:
+3. Add any alias variants to `ALIASES`:
 ```python
 "alt name for attr 1": "Attribute 1",
 ```
 
+4. Optionally add abbreviation aliases to `CLASS_ALIASES` in `src/class_extractor.py` for deterministic classification:
+```python
+"my alias": "My New Class",
+```
+
 ---
 
-## 10. Deployment
+## 11. Pipeline Optimization Features
+
+### Batch Classification
+In `main.py`, the `PartClassifier.classify_batch()` method classifies up to 50 parts per LLM call instead of 1, achieving 95% token savings. Parts that fail batch parsing fall back to individual classification.
+
+### Regex Pre-Extraction
+Before each LLM extraction call, `regex_extractor.py` attempts pattern-based extraction. Pre-extracted values are sent to the LLM for validation and gap-filling, reducing the LLM's workload and improving accuracy.
+
+### Deterministic Classification
+`class_extractor.py` attempts to classify parts from web content alone (breadcrumbs, labels, titles, URLs). Only when this fails does the pipeline make an LLM call, saving tokens on parts with clear category signals.
+
+### Manufacturer Rotation
+`shared.py:rotate_manufacturers()` reorders parts so requests to the same manufacturer are spread apart, reducing the risk of bot detection and rate limiting.
+
+---
+
+## 12. Deployment
 
 ### Local Development
 No special deployment needed. Run directly with Python.
@@ -254,7 +342,7 @@ No special deployment needed. Run directly with Python.
 - Use `main_cc.py` with `--workers 8` for maximum throughput
 - Ensure `claude` CLI is configured for your enterprise backend (Azure, etc.)
 - Progress auto-saves; safe to interrupt and resume
-- Output files written every 50 parts
+- Output files written every 50 parts (main_cc.py) or 10 parts (main.py)
 
 ### Docker (optional)
 No Dockerfile is included yet. For containerization:
@@ -279,9 +367,12 @@ No Dockerfile is included yet. For containerization:
 - [ ] Mouser API configured
 - [ ] McMaster API configured
 - [ ] CloakBrowser installed (`pip install cloakbrowser`)
+- [ ] Azure OpenAI configured (enterprise)
+- [ ] AWS Bedrock configured (enterprise)
 
 ### First Run
 - [ ] Input Excel placed in `input/` folder
 - [ ] Ran classification (any mode)
 - [ ] Verified output files in `output/`
 - [ ] Checked attribute accuracy
+- [ ] Reviewed metrics summary

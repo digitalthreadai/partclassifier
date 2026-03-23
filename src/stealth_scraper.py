@@ -144,10 +144,12 @@ class StealthScraper:
         if not self._browser:
             return None
 
-        page = await self._browser.new_page()
+        # Fresh context for search (prevents cookie tracking across sessions)
+        context = await self._browser.new_context()
+        page = await context.new_page()
         label = mfg_name or "web"
         try:
-            await asyncio.sleep(random.uniform(1, 3))
+            await asyncio.sleep(random.uniform(3, 6))
 
             # Search DuckDuckGo
             search_url = f"https://duckduckgo.com/?q={query}"
@@ -161,6 +163,7 @@ class StealthScraper:
             }""")
 
             await page.close()
+            await context.close()
 
             if not urls:
                 print(f"    [Stealth] No search results for: {query[:50]}")
@@ -181,8 +184,11 @@ class StealthScraper:
 
         except Exception as e:
             print(f"    [Stealth] Search error: {e}")
-            if not page.is_closed():
+            try:
                 await page.close()
+                await context.close()
+            except Exception:
+                pass
             return None
 
     async def scrape_url(self, url: str) -> str | None:
@@ -194,7 +200,9 @@ class StealthScraper:
         if not self._browser:
             return None
 
-        page = await self._browser.new_page()
+        # Fresh context per URL (prevents cookie/session leakage)
+        context = await self._browser.new_context()
+        page = await context.new_page()
         try:
             await page.goto(url, wait_until="networkidle", timeout=30000)
             await asyncio.sleep(1)
@@ -218,3 +226,4 @@ class StealthScraper:
             return None
         finally:
             await page.close()
+            await context.close()

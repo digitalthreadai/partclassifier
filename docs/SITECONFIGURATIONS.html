@@ -3,358 +3,494 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PartClassifier - Setup Guide</title>
+<title>PartClassifier -- Setup Guide</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg: #0A0A0F; --surface: #12121A; --surface-hover: #1E1E2E;
-  --terminal-bg: #1A1A2E; --terminal-border: #2A2A3E;
-  --text: #E8E8ED; --muted: #8888A0; --muted-fg: #6E6E88;
-  --primary: #FFD600; --primary-light: #FFFDE7; --secondary: #60A5FA;
-  --green: #4ADE80; --blue: #60A5FA; --purple: #A78BFA; --red: #F87171;
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
-code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
-.gradient-text { background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a2e;--bg4:#22223a;--accent:#6c63ff;--accent2:#00d4aa;--text:#e8e8ed;--muted:#8888a0;--border:#2a2a3e;--code-bg:#161625;--radius:10px;--shadow:0 4px 24px rgba(0,0,0,0.4);--sidebar-w:260px}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.7}
+a{color:var(--accent);text-decoration:none;transition:color .2s}
+a:hover{color:var(--accent2)}
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:24px 0;overflow-y:auto;z-index:100;transition:transform .3s}
+.sidebar .logo{padding:0 20px 20px;font-weight:700;font-size:1.1rem;border-bottom:1px solid var(--border)}
+.sidebar .logo span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sidebar nav{padding:16px 0}
+.sidebar nav a{display:block;padding:8px 20px;color:var(--muted);font-size:.88rem;transition:all .2s;border-left:3px solid transparent}
+.sidebar nav a:hover,.sidebar nav a.active{color:var(--text);background:var(--bg3);border-left-color:var(--accent)}
+.sidebar nav .section-label{padding:16px 20px 6px;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.sidebar .back-link{display:block;padding:12px 20px;font-size:.85rem;border-top:1px solid var(--border);margin-top:12px}
 
-/* Sidebar */
-.sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; background: var(--surface); border-right: 1px solid var(--terminal-border); padding: 1.5rem 0; overflow-y: auto; z-index: 100; }
-.sidebar .logo { padding: 0 1.25rem 1rem; font-size: 1rem; font-weight: 800; }
-.sidebar .time-est { padding: 0 1.25rem 1rem; font-size: 0.78rem; color: var(--muted); }
-.sidebar .progress-wrap { padding: 0 1.25rem 1.5rem; }
-.sidebar .progress-bar-bg { width: 100%; height: 4px; background: var(--terminal-border); border-radius: 2px; overflow: hidden; }
-.sidebar .progress-bar { height: 100%; background: var(--primary); border-radius: 2px; width: 0%; transition: width 0.3s; }
-.sidebar .progress-text { font-size: 0.7rem; color: var(--muted-fg); margin-top: 0.3rem; }
-.sidebar .nav-label { padding: 0.5rem 1.25rem 0.25rem; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted-fg); }
-.sidebar nav a { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 1.25rem; color: var(--muted); text-decoration: none; font-size: 0.82rem; border-left: 2px solid transparent; transition: all 0.15s; }
-.sidebar nav a:hover { color: var(--text); }
-.sidebar nav a.active { color: var(--primary); border-left-color: var(--primary); background: rgba(255,214,0,0.05); }
-.sidebar nav .step-num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; font-size: 0.65rem; font-weight: 700; background: var(--terminal-bg); border: 1px solid var(--terminal-border); border-radius: 4px; flex-shrink: 0; }
-.sidebar .footer-links { position: absolute; bottom: 0; left: 0; right: 0; padding: 1rem 1.25rem; border-top: 1px solid var(--terminal-border); font-size: 0.75rem; }
-.sidebar .footer-links a { display: inline; padding: 0; border: none; color: var(--muted-fg); margin-right: 0.75rem; text-decoration: none; }
-.sidebar .footer-links a:hover { color: var(--primary); }
-.main { margin-left: 260px; }
+/* Progress bar in sidebar */
+.progress-container{padding:16px 20px;border-top:1px solid var(--border)}
+.progress-label{font-size:.8rem;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
+.progress-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width .4s ease}
 
-/* Hero Banner */
-.hero-banner { padding: 5rem 2.5rem 3rem; background: linear-gradient(135deg, rgba(255,214,0,0.03), rgba(96,165,250,0.03)); border-bottom: 1px solid var(--terminal-border); }
-.hero-banner h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 900; margin-bottom: 0.75rem; }
-.hero-banner p { color: var(--muted); font-size: 1.05rem; max-width: 600px; }
+.content{margin-left:var(--sidebar-w);padding:40px 50px 80px;max-width:920px}
+.content h1{font-size:2.2rem;font-weight:700;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.content .subtitle{color:var(--muted);font-size:1.05rem;margin-bottom:32px}
+.content h2{font-size:1.4rem;font-weight:700;margin:40px 0 16px;padding-top:20px;border-top:1px solid var(--border);color:var(--text)}
+.content h2:first-of-type{border-top:none;padding-top:0}
+.content h3{font-size:1.1rem;font-weight:600;margin:24px 0 10px;color:var(--text)}
+.content p{margin-bottom:14px;color:var(--text)}
+.content ul,.content ol{margin:0 0 14px 24px;color:var(--text)}
+.content li{margin-bottom:6px}
+table{width:100%;border-collapse:collapse;margin:16px 0 24px;font-size:.9rem}
+th{background:var(--bg3);font-weight:600;text-align:left;padding:10px 14px;border:1px solid var(--border)}
+td{padding:10px 14px;border:1px solid var(--border);color:var(--muted)}
+tr:hover td{background:var(--bg2)}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin:12px 0 20px;overflow-x:auto;position:relative;font-family:'JetBrains Mono',monospace;font-size:.85rem;line-height:1.6;white-space:pre}
+code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
+:not(pre)>code{background:var(--bg3);padding:2px 7px;border-radius:4px;font-size:.83rem}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem;font-family:'JetBrains Mono',monospace;transition:all .2s}
+.copy-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.copy-btn.copied{background:var(--accent2);color:#000;border-color:var(--accent2)}
 
-/* Step sections */
-.step-section { padding: 3rem 2.5rem; border-bottom: 1px solid var(--terminal-border); max-width: 960px; }
-.step-section:last-of-type { border-bottom: none; }
-.step-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
-.step-badge { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: var(--primary); color: #000; font-size: 0.85rem; font-weight: 800; border-radius: 8px; flex-shrink: 0; }
-.step-header h2 { font-size: 1.4rem; font-weight: 800; }
-.step-time { font-size: 0.75rem; color: var(--muted); margin-bottom: 1.5rem; margin-left: 2.75rem; }
-.step-content { margin-left: 0; }
-.step-content p { color: var(--muted); font-size: 0.92rem; margin-bottom: 1rem; max-width: 650px; }
-
-/* Terminal */
-.terminal { position: relative; background: var(--terminal-bg); border: 1px solid var(--terminal-border); border-radius: 12px; overflow: hidden; margin-bottom: 1.25rem; }
-.terminal-bar { display: flex; align-items: center; gap: 6px; padding: 0.65rem 1rem; background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--terminal-border); }
-.terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
-.terminal-dot.red { background: #FF5F57; } .terminal-dot.yellow { background: #FEBC2E; } .terminal-dot.green { background: #28C840; }
-.terminal-title { color: var(--muted-fg); font-size: 0.72rem; margin-left: auto; }
-.terminal-body { padding: 1rem 1.25rem; font-size: 0.82rem; line-height: 1.8; }
-.terminal-body .prompt { color: var(--green); } .terminal-body .cmd { color: var(--text); } .terminal-body .comment { color: var(--muted-fg); }
-.terminal-body .kw { color: var(--primary); } .terminal-body .str { color: var(--green); }
-.terminal-copy { position: absolute; top: 0.55rem; right: 0.75rem; background: transparent; border: 1px solid var(--terminal-border); color: var(--muted); padding: 0.2rem 0.45rem; border-radius: 4px; font-size: 0.68rem; cursor: pointer; transition: all 0.2s; }
-.terminal-copy:hover { border-color: var(--primary); color: var(--primary); }
-
-/* Tables */
-.styled-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--terminal-border); margin-bottom: 1.5rem; }
-.styled-table th { text-align: left; padding: 0.65rem 0.9rem; background: var(--terminal-bg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--terminal-border); }
-.styled-table td { padding: 0.65rem 0.9rem; border-bottom: 1px solid rgba(42,42,62,0.5); font-size: 0.85rem; }
-.styled-table tr:last-child td { border-bottom: none; }
-.styled-table tr:hover td { background: var(--surface-hover); }
-.styled-table code { background: var(--terminal-bg); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.78rem; }
+/* Collapsible */
+.collapsible{margin:16px 0}
+.collapsible-header{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:.95rem;transition:all .2s;user-select:none}
+.collapsible-header:hover{background:var(--bg3);border-color:var(--accent)}
+.collapsible-header::after{content:'+';font-size:1.2rem;color:var(--accent);transition:transform .2s;font-weight:400}
+.collapsible-header.open::after{content:'\2212'}
+.collapsible-body{max-height:0;overflow:hidden;transition:max-height .3s ease}
+.collapsible-body.open{max-height:3000px}
+.collapsible-inner{padding:16px 20px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);background:var(--bg2)}
 
 /* Checklist */
-.checklist-section { padding: 3rem 2.5rem; max-width: 960px; }
-.checklist-section h2 { font-size: 1.4rem; font-weight: 800; margin-bottom: 0.5rem; }
-.checklist-section .section-desc { margin-bottom: 1.5rem; }
-.check-group-title { font-size: 0.85rem; font-weight: 700; color: var(--muted); margin: 1.5rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.check-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; cursor: pointer; user-select: none; font-size: 0.88rem; color: var(--muted); transition: color 0.15s; }
-.check-item:hover { color: var(--text); }
-.check-item.checked { color: var(--muted-fg); text-decoration: line-through; }
-.check-box { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; border: 2px solid var(--terminal-border); display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
-.check-item.checked .check-box { background: var(--primary); border-color: var(--primary); }
-.check-item.checked .check-box::after { content: '\2713'; color: #000; font-size: 0.7rem; font-weight: 700; }
+.checklist{list-style:none;margin:16px 0;padding:0}
+.checklist li{display:flex;align-items:flex-start;gap:12px;padding:10px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all .2s;user-select:none}
+.checklist li:hover{background:var(--bg3);border-color:var(--accent)}
+.checklist li.checked{opacity:.6}
+.checklist li.checked .check-text{text-decoration:line-through}
+.check-box{width:20px;height:20px;border:2px solid var(--border);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;margin-top:2px}
+.checklist li.checked .check-box{background:var(--accent2);border-color:var(--accent2)}
+.checklist li.checked .check-box::after{content:'\2713';color:#000;font-size:.75rem;font-weight:700}
+.check-text{font-size:.9rem}
+.check-section{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:24px 0 8px;padding-left:4px}
+.reset-btn{background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:.82rem;font-family:'Inter',sans-serif;transition:all .2s;margin-top:12px}
+.reset-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; } .step-section, .hero-banner, .checklist-section { padding-left: 1.5rem; padding-right: 1.5rem; } }
+/* Env block */
+.env-block{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin:12px 0 20px;font-family:'JetBrains Mono',monospace;font-size:.85rem;line-height:1.6;position:relative;overflow-x:auto}
+.env-key{color:var(--accent)}
+.env-val{color:var(--accent2)}
+.env-comment{color:var(--muted)}
+
+.menu-btn{display:none;position:fixed;top:14px;left:14px;z-index:200;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:1.1rem}
+@media(max-width:900px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .content{margin-left:0;padding:60px 24px 80px}
+  .menu-btn{display:block}
+}
 </style>
 </head>
 <body>
 
-<!-- Sidebar -->
-<div class="sidebar">
-  <div class="logo"><span class="gradient-text">Setup Guide</span></div>
-  <div class="time-est">~15 minutes to complete</div>
-  <div class="progress-wrap">
-    <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
-    <div class="progress-text" id="progressCount">0 / 10 completed</div>
-  </div>
-  <div class="nav-label">Steps</div>
+<button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+
+<aside class="sidebar">
+  <div class="logo"><span>PartClassifier</span></div>
   <nav>
-    <a href="#step-1"><span class="step-num">1</span> Python Setup</a>
-    <a href="#step-2"><span class="step-num">2</span> LLM Provider</a>
-    <a href="#step-3"><span class="step-num">3</span> Distributor APIs</a>
-    <a href="#step-4"><span class="step-num">4</span> Stealth Browser</a>
-    <a href="#step-5"><span class="step-num">5</span> Input Excel</a>
-    <a href="#step-6"><span class="step-num">6</span> Run the Agent</a>
-  </nav>
-  <div class="nav-label">Reference</div>
-  <nav>
-    <a href="#env-vars">Environment Variables</a>
+    <div class="section-label">Setup Steps</div>
+    <a href="#top" class="active">Overview</a>
+    <a href="#python">1. Python Environment</a>
+    <a href="#llm">2. LLM Provider</a>
+    <a href="#apis">3. Distributor APIs</a>
+    <a href="#stealth">4. Stealth Browser</a>
+    <a href="#input">5. Input Excel</a>
+    <a href="#env-ref">6. Environment Reference</a>
+    <div class="section-label">Running</div>
+    <a href="#running">7. Running the Agent</a>
+    <a href="#output">8. Output</a>
+    <a href="#cache">9. Cache Management</a>
+    <div class="section-label">Advanced</div>
+    <a href="#new-classes">10. New Part Classes</a>
+    <a href="#optimization">11. Optimization</a>
+    <a href="#deployment">12. Deployment</a>
     <a href="#checklist">Checklist</a>
   </nav>
-  <div class="footer-links">
-    <a href="index.html">Hub</a>
-    <a href="README.html">Overview</a>
-    <a href="COO.html">Strategy</a>
+  <div class="progress-container">
+    <div class="progress-label"><span>Setup Progress</span><span id="progress-pct">0%</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
   </div>
-</div>
+  <a href="index.html" class="back-link">&larr; Documentation Hub</a>
+</aside>
 
-<div class="main">
+<main class="content" id="top">
+  <h1>Setup Guide</h1>
+  <p class="subtitle">Step-by-step configuration for all execution modes, LLM providers, distributor APIs, and deployment.</p>
 
-<!-- Hero Banner -->
-<div class="hero-banner">
-  <div style="display:inline-block;font-size:0.75rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--primary);margin-bottom:0.75rem;">Configuration</div>
-  <h1><span class="gradient-text">Setup Guide</span></h1>
-  <p>Step-by-step instructions to configure LLM providers, distributor APIs, stealth browser, and run PartClassifier.</p>
-</div>
+  <h2 id="python">1. Python Environment</h2>
 
-<!-- Step 1 -->
-<div class="step-section" id="step-1">
-  <div class="step-header"><span class="step-badge">1</span><h2>Python Environment</h2></div>
-  <div class="step-time">~3 minutes</div>
-  <div class="step-content">
-    <p>Clone the repository and install dependencies in a virtual environment.</p>
-    <div class="terminal">
-      <div class="terminal-bar"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">Terminal</span></div>
-      <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
-      <div class="terminal-body">
-        <div><span class="prompt">$</span> <span class="cmd">git clone https://github.com/digitalthreadai/partclassifier.git</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">cd partclassifier</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">python -m venv venv</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">venv\Scripts\activate</span> <span class="comment"># Windows</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">pip install -r requirements.txt</span></div>
-      </div>
-    </div>
-    <p>Installs: openai, openpyxl, curl_cffi, beautifulsoup4, python-dotenv, anthropic, httpx, streamlit, cloakbrowser.</p>
+  <h3>Prerequisites</h3>
+  <ul>
+    <li>Python 3.11+ (<a href="https://www.python.org/downloads/" target="_blank">python.org</a>)</li>
+    <li>Git (optional, for cloning)</li>
+    <li>pip (included with Python)</li>
+  </ul>
+
+  <h3>Clone and setup</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>git clone https://github.com/digitalthreadai/partclassifier.git
+cd partclassifier</pre>
+
+  <h3>Create virtual environment (recommended)</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS / Linux</pre>
+
+  <h3>Install dependencies</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>pip install -r requirements.txt</pre>
+
+  <p>Installs: <code>openai</code>, <code>openpyxl</code>, <code>curl_cffi</code>, <code>beautifulsoup4</code>, <code>python-dotenv</code>, <code>anthropic</code>, <code>httpx</code>, <code>streamlit</code>. CloakBrowser is optional (Section 4).</p>
+
+  <h2 id="llm">2. LLM Provider Configuration</h2>
+
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>cp .env.example .env</pre>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Groq (free, recommended to start)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">groq</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">gsk_your_groq_key_here</span></div>
+      <p>Get key: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a><br>Default model: <code>llama-3.3-70b-versatile</code></p>
+    </div></div>
   </div>
-</div>
 
-<!-- Step 2 -->
-<div class="step-section" id="step-2">
-  <div class="step-header"><span class="step-badge">2</span><h2>LLM Provider</h2></div>
-  <div class="step-time">~2 minutes</div>
-  <div class="step-content">
-    <p>Copy the example env file and configure your LLM provider.</p>
-    <div class="terminal">
-      <div class="terminal-bar"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">.env</span></div>
-      <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
-      <div class="terminal-body">
-        <div><span class="prompt">$</span> <span class="cmd">cp .env.example .env</span></div>
-        <div></div>
-        <div><span class="comment"># Edit .env with your chosen provider:</span></div>
-        <div><span class="kw">LLM_PROVIDER</span>=<span class="str">groq</span>    <span class="comment"># groq, openai, anthropic, ollama, custom</span></div>
-        <div><span class="kw">LLM_API_KEY</span>=<span class="str">gsk_your_key_here</span></div>
-      </div>
-    </div>
-    <table class="styled-table">
-      <thead><tr><th>Provider</th><th>Default Model</th><th>Get Key</th></tr></thead>
-      <tbody>
-        <tr><td><strong>Groq</strong> (free)</td><td><code>llama-3.3-70b-versatile</code></td><td>console.groq.com/keys</td></tr>
-        <tr><td><strong>OpenAI</strong></td><td><code>gpt-4o</code></td><td>platform.openai.com/api-keys</td></tr>
-        <tr><td><strong>Anthropic</strong></td><td><code>claude-sonnet-4-20250514</code></td><td>console.anthropic.com/settings/keys</td></tr>
-        <tr><td><strong>Ollama</strong> (local)</td><td><code>llama3.1</code></td><td>ollama.ai (no key needed)</td></tr>
-      </tbody>
-    </table>
-    <p><strong>Claude Code CLI mode:</strong> Skip this step entirely. No .env needed -- uses your <code>claude</code> CLI config.</p>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">OpenAI</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">openai</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">sk-your_openai_key_here</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">gpt-4o</span></div>
+      <p>Get key: <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></p>
+    </div></div>
   </div>
-</div>
 
-<!-- Step 3 -->
-<div class="step-section" id="step-3">
-  <div class="step-header"><span class="step-badge">3</span><h2>Distributor APIs (Optional)</h2></div>
-  <div class="step-time">~5 minutes per API</div>
-  <div class="step-content">
-    <p>Higher-quality structured data. When 3+ attributes found via API, LLM extraction is skipped entirely.</p>
-    <div class="terminal">
-      <div class="terminal-bar"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">.env (optional APIs)</span></div>
-      <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
-      <div class="terminal-body">
-        <div><span class="comment"># DigiKey (free: developer.digikey.com)</span></div>
-        <div><span class="kw">DIGIKEY_CLIENT_ID</span>=<span class="str">your_client_id</span></div>
-        <div><span class="kw">DIGIKEY_CLIENT_SECRET</span>=<span class="str">your_client_secret</span></div>
-        <div></div>
-        <div><span class="comment"># Mouser (free: api.mouser.com)</span></div>
-        <div><span class="kw">MOUSER_API_KEY</span>=<span class="str">your_api_key</span></div>
-        <div></div>
-        <div><span class="comment"># McMaster (email eprocurement@mcmaster.com)</span></div>
-        <div><span class="kw">MCMASTER_BEARER_TOKEN</span>=<span class="str">your_token</span></div>
-        <div><span class="kw">MCMASTER_CLIENT_CERT</span>=<span class="str">path/to/client.pem</span></div>
-        <div><span class="kw">MCMASTER_CLIENT_KEY</span>=<span class="str">path/to/client-key.pem</span></div>
-      </div>
-    </div>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Anthropic (Claude)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">anthropic</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">sk-ant-your_anthropic_key_here</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">claude-sonnet-4-20250514</span></div>
+      <p>Get key: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a><br>Other models: <code>claude-opus-4-20250514</code>, <code>claude-haiku-4-5-20251001</code></p>
+    </div></div>
   </div>
-</div>
 
-<!-- Step 4 -->
-<div class="step-section" id="step-4">
-  <div class="step-header"><span class="step-badge">4</span><h2>Stealth Browser (Optional)</h2></div>
-  <div class="step-time">~1 minute + 200MB download</div>
-  <div class="step-content">
-    <p>CloakBrowser enables direct scraping of bot-protected sites like McMaster-Carr, Fastenal, and Grainger.</p>
-    <div class="terminal">
-      <div class="terminal-bar"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">Terminal</span></div>
-      <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
-      <div class="terminal-body">
-        <div><span class="prompt">$</span> <span class="cmd">pip install cloakbrowser</span></div>
-        <div><span class="comment"># First run downloads ~200MB Chromium binary automatically</span></div>
-        <div></div>
-        <div><span class="comment"># To disable (keep installed but don't use):</span></div>
-        <div><span class="comment"># Add to .env: STEALTH_BROWSER_ENABLED=false</span></div>
-      </div>
-    </div>
-    <p>CloakBrowser is a custom-compiled Chromium with 33 C++ source-level patches that bypass Cloudflare, reCAPTCHA v3, and FingerprintJS detection.</p>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Azure OpenAI (enterprise)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">azure_openai</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_azure_api_key</span><br><span class="env-key">AZURE_OPENAI_ENDPOINT</span>=<span class="env-val">https://your-resource.openai.azure.com/</span><br><span class="env-key">AZURE_OPENAI_API_VERSION</span>=<span class="env-val">2024-12-01-preview</span><br><span class="env-key">AZURE_OPENAI_DEPLOYMENT</span>=<span class="env-val">your-deployment-name</span></div>
+      <p>Get access: <a href="https://portal.azure.com" target="_blank">portal.azure.com</a></p>
+    </div></div>
   </div>
-</div>
 
-<!-- Step 5 -->
-<div class="step-section" id="step-5">
-  <div class="step-header"><span class="step-badge">5</span><h2>Input Excel</h2></div>
-  <div class="step-time">~2 minutes</div>
-  <div class="step-content">
-    <p>Place your input file at <code>input/PartClassifierInput.xlsx</code>. A sample file with 4 parts is included.</p>
-    <table class="styled-table">
-      <thead><tr><th>Column</th><th>Description</th><th>Example</th></tr></thead>
-      <tbody>
-        <tr><td><code>Part Number</code></td><td>Internal part number</td><td>900401</td></tr>
-        <tr><td><code>Part Name</code></td><td>Descriptive name (used for classification)</td><td>WASHER, #5, INT TOOTH</td></tr>
-        <tr><td><code>Manufacturer Part Number</code></td><td>Used for web search</td><td>98449A515</td></tr>
-        <tr><td><code>Manufacturer Name</code></td><td>Manufacturer or distributor</td><td>MCMASTER CARR SUPPLY</td></tr>
-        <tr><td><code>Unit of Measure</code></td><td>Target unit for output</td><td>inches or mm</td></tr>
-      </tbody>
-    </table>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">AWS Bedrock (enterprise)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">bedrock</span><br><span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span></div>
+      <p>No API key needed -- uses default AWS credential chain (env vars, <code>~/.aws/credentials</code>, IAM role).</p>
+    </div></div>
   </div>
-</div>
 
-<!-- Step 6 -->
-<div class="step-section" id="step-6">
-  <div class="step-header"><span class="step-badge">6</span><h2>Run the Agent</h2></div>
-  <div class="step-time">Depends on part count</div>
-  <div class="step-content">
-    <p>Choose your preferred execution mode.</p>
-    <div class="terminal">
-      <div class="terminal-bar"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">Web UI (recommended)</span></div>
-      <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
-      <div class="terminal-body">
-        <div><span class="prompt">$</span> <span class="cmd">streamlit run app.py</span></div>
-        <div><span class="comment"># Opens browser at http://localhost:8501</span></div>
-      </div>
-    </div>
-    <div class="terminal">
-      <div class="terminal-bar"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">CLI modes</span></div>
-      <button class="terminal-copy" onclick="copyCode(this)">Copy</button>
-      <div class="terminal-body">
-        <div><span class="prompt">$</span> <span class="cmd">python main.py</span>        <span class="comment"># API key mode</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">python main_cc.py</span>     <span class="comment"># Claude Code CLI (zero-key)</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">python main_cc.py --workers 8</span>  <span class="comment"># 8 parallel workers</span></div>
-      </div>
-    </div>
-    <p>Output files appear in <code>output/</code>, one <code>.xlsx</code> per part class.</p>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Ollama (local, free)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">ollama</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">llama3.1</span></div>
+      <p>Install: <a href="https://ollama.ai" target="_blank">ollama.ai</a><br>Then: <code>ollama serve</code> and <code>ollama pull llama3.1</code></p>
+    </div></div>
   </div>
-</div>
 
-<!-- Environment Variables Reference -->
-<div class="step-section" id="env-vars">
-  <h2 style="font-size:1.4rem;font-weight:800;margin-bottom:1.5rem;">Environment Variables Reference</h2>
-  <table class="styled-table">
-    <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
-    <tbody>
-      <tr><td><code>LLM_PROVIDER</code></td><td>Yes*</td><td>groq, openai, anthropic, ollama, custom</td></tr>
-      <tr><td><code>LLM_API_KEY</code></td><td>Yes*</td><td>Provider API key (*not needed for Ollama or CLI mode)</td></tr>
-      <tr><td><code>LLM_MODEL</code></td><td>No</td><td>Override default model for your provider</td></tr>
-      <tr><td><code>LLM_BASE_URL</code></td><td>No</td><td>Custom endpoint (custom provider only)</td></tr>
-      <tr><td><code>DIGIKEY_CLIENT_ID</code></td><td>No</td><td>DigiKey OAuth2 client ID</td></tr>
-      <tr><td><code>DIGIKEY_CLIENT_SECRET</code></td><td>No</td><td>DigiKey OAuth2 secret</td></tr>
-      <tr><td><code>MOUSER_API_KEY</code></td><td>No</td><td>Mouser Search API key</td></tr>
-      <tr><td><code>MCMASTER_BEARER_TOKEN</code></td><td>No</td><td>McMaster API bearer token</td></tr>
-      <tr><td><code>MCMASTER_CLIENT_CERT</code></td><td>No</td><td>Path to McMaster client certificate</td></tr>
-      <tr><td><code>MCMASTER_CLIENT_KEY</code></td><td>No</td><td>Path to McMaster client key</td></tr>
-      <tr><td><code>STEALTH_BROWSER_ENABLED</code></td><td>No</td><td>true/false to toggle CloakBrowser (default: true)</td></tr>
-      <tr><td><code>GROQ_API_KEY</code></td><td>No</td><td>Legacy fallback (still works if LLM_PROVIDER not set)</td></tr>
-    </tbody>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Custom OpenAI-compatible API</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">custom</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_key</span><br><span class="env-key">LLM_BASE_URL</span>=<span class="env-val">https://your-api-endpoint.com/v1</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">your-model-name</span></div>
+    </div></div>
+  </div>
+
+  <h2 id="apis">3. Distributor API Keys (all optional)</h2>
+
+  <p>Higher-quality structured data. When an API returns 3+ attributes, LLM extraction is skipped entirely.</p>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">DigiKey (free)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <p>Register at <a href="https://developer.digikey.com" target="_blank">developer.digikey.com</a>:</p>
+      <div class="env-block"><span class="env-key">DIGIKEY_CLIENT_ID</span>=<span class="env-val">your_client_id</span><br><span class="env-key">DIGIKEY_CLIENT_SECRET</span>=<span class="env-val">your_client_secret</span></div>
+      <p>OAuth2 tokens are auto-cached and refreshed.</p>
+    </div></div>
+  </div>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Mouser (free)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <p>Register at <a href="https://api.mouser.com" target="_blank">api.mouser.com</a>:</p>
+      <div class="env-block"><span class="env-key">MOUSER_API_KEY</span>=<span class="env-val">your_api_key</span></div>
+      <p>Rate limited: 30 req/min (auto-throttled).</p>
+    </div></div>
+  </div>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">McMaster-Carr (by request)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <p>Email <code>eprocurement@mcmaster.com</code> for mTLS access:</p>
+      <div class="env-block"><span class="env-key">MCMASTER_BEARER_TOKEN</span>=<span class="env-val">your_token</span><br><span class="env-key">MCMASTER_CLIENT_CERT</span>=<span class="env-val">path/to/client.pem</span><br><span class="env-key">MCMASTER_CLIENT_KEY</span>=<span class="env-val">path/to/client-key.pem</span></div>
+    </div></div>
+  </div>
+
+  <h2 id="stealth">4. Stealth Browser (optional)</h2>
+
+  <p>CloakBrowser enables scraping bot-protected sites (McMaster-Carr, Fastenal, Grainger). 33 C++ patches to Chromium, bypasses Cloudflare, reCAPTCHA v3, FingerprintJS, Turnstile.</p>
+
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>pip install cloakbrowser</pre>
+
+  <p>First run downloads ~200MB Chromium binary. To disable:</p>
+
+  <div class="env-block"><span class="env-key">STEALTH_BROWSER_ENABLED</span>=<span class="env-val">false</span></div>
+
+  <h2 id="input">5. Input Excel Preparation</h2>
+
+  <p>Place your file at <code>input/PartClassifierInput.xlsx</code>.</p>
+
+  <table>
+    <tr><th>Column</th><th>Description</th><th>Example</th></tr>
+    <tr><td>Part Number</td><td>Internal part number</td><td>900401</td></tr>
+    <tr><td>Part Name</td><td>Descriptive name (used for classification)</td><td>WASHER, #5, INT TOOTH</td></tr>
+    <tr><td>Manufacturer Part Number</td><td>Used for web search</td><td>98449A515</td></tr>
+    <tr><td>Manufacturer Name</td><td>Manufacturer or distributor</td><td>MCMASTER CARR SUPPLY</td></tr>
+    <tr><td>Unit of Measure</td><td>Target unit for output values</td><td>inches or mm</td></tr>
   </table>
-</div>
 
-<!-- Checklist -->
-<div class="checklist-section" id="checklist">
-  <h2>Setup Checklist</h2>
-  <p class="section-desc" style="color:var(--muted);font-size:0.92rem;margin-bottom:1.5rem;">Track your progress. Checked items persist in your browser.</p>
+  <h2 id="env-ref">6. Environment Variables Reference</h2>
 
-  <div class="check-group-title">Initial Setup</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c1"><div class="check-box"></div>Python 3.11+ installed</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c2"><div class="check-box"></div>Repository cloned</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c3"><div class="check-box"></div>Virtual environment created and activated</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c4"><div class="check-box"></div>pip install -r requirements.txt completed</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c5"><div class="check-box"></div>.env file created and LLM provider configured</div>
+  <table>
+    <tr><th>Variable</th><th>Required</th><th>Description</th></tr>
+    <tr><td><code>LLM_PROVIDER</code></td><td>Yes*</td><td>groq, openai, anthropic, azure_openai, bedrock, ollama, custom</td></tr>
+    <tr><td><code>LLM_API_KEY</code></td><td>Yes*</td><td>Provider API key (*not needed for Ollama/Bedrock)</td></tr>
+    <tr><td><code>LLM_MODEL</code></td><td>No</td><td>Override default model for your provider</td></tr>
+    <tr><td><code>LLM_BASE_URL</code></td><td>No</td><td>Custom endpoint (custom provider only)</td></tr>
+    <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Azure</td><td>Azure resource endpoint</td></tr>
+    <tr><td><code>AZURE_OPENAI_API_VERSION</code></td><td>No</td><td>API version (default: 2024-12-01-preview)</td></tr>
+    <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>No</td><td>Azure deployment name</td></tr>
+    <tr><td><code>AWS_REGION</code></td><td>No</td><td>AWS region (default: us-east-1)</td></tr>
+    <tr><td><code>DIGIKEY_CLIENT_ID</code></td><td>No</td><td>DigiKey OAuth2 client ID</td></tr>
+    <tr><td><code>DIGIKEY_CLIENT_SECRET</code></td><td>No</td><td>DigiKey OAuth2 secret</td></tr>
+    <tr><td><code>MOUSER_API_KEY</code></td><td>No</td><td>Mouser Search API key</td></tr>
+    <tr><td><code>MCMASTER_BEARER_TOKEN</code></td><td>No</td><td>McMaster API bearer token</td></tr>
+    <tr><td><code>MCMASTER_CLIENT_CERT</code></td><td>No</td><td>Path to McMaster client cert</td></tr>
+    <tr><td><code>MCMASTER_CLIENT_KEY</code></td><td>No</td><td>Path to McMaster client key</td></tr>
+    <tr><td><code>STEALTH_BROWSER_ENABLED</code></td><td>No</td><td>true/false to toggle CloakBrowser (default: true)</td></tr>
+    <tr><td><code>GROQ_API_KEY</code></td><td>No</td><td>Legacy fallback (still works)</td></tr>
+  </table>
 
-  <div class="check-group-title">Optional Enhancements</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c6"><div class="check-box"></div>DigiKey API configured</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c7"><div class="check-box"></div>Mouser API configured</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c8"><div class="check-box"></div>McMaster API configured</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c9"><div class="check-box"></div>CloakBrowser installed</div>
+  <h2 id="running">7. Running the Agent</h2>
 
-  <div class="check-group-title">First Run</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c10"><div class="check-box"></div>Input Excel placed in input/ folder</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c11"><div class="check-box"></div>Ran classification successfully</div>
-  <div class="check-item" onclick="toggleCheck(this)" data-key="c12"><div class="check-box"></div>Verified output files in output/</div>
-</div>
+  <h3>Option A: Streamlit Web UI</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>streamlit run app.py</pre>
+  <p>Open <code>http://localhost:8501</code>. Configure provider in sidebar, select input file, click Run.</p>
 
-</div><!-- .main -->
+  <h3>Option B: API Key CLI</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python main.py
+python main.py --input path/to/input.xlsx --output path/to/output/
+python main.py --no-cache        # bypass LLM cache
+python main.py --clear-cache     # delete cache before run</pre>
+
+  <h3>Option C: Claude Code CLI (zero API keys)</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python main_cc.py                # 4 parallel workers
+python main_cc.py --workers 8   # 8 workers (faster)
+python main_cc.py --fresh        # ignore previous progress
+python main_cc.py --workers 1   # sequential (debugging)</pre>
+  <p>Requires <code>claude</code> CLI installed and on PATH. No <code>.env</code> needed.</p>
+
+  <h2 id="output">8. Output</h2>
+
+  <p>Output files appear in <code>output/</code>, one per part class:</p>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>output/
+  Flat Washer.xlsx
+  Split Lock Washer.xlsx
+  Deep Groove Ball Bearing.xlsx
+  Tube Fitting.xlsx</pre>
+  <p>Each file contains: original input columns + Part Class + Source URL + extracted attributes with canonical column names.</p>
+
+  <h2 id="cache">9. Cache Management</h2>
+
+  <table>
+    <tr><th>Cache</th><th>File</th><th>TTL</th><th>Notes</th></tr>
+    <tr><td>URL cache</td><td><code>url_cache.json</code></td><td>30 days</td><td>Shared across modes, safe to commit</td></tr>
+    <tr><td>LLM classify</td><td><code>llm_cache.json</code></td><td>90 days</td><td>Thread-safe, atomic writes</td></tr>
+    <tr><td>LLM extract</td><td><code>llm_cache.json</code></td><td>30 days</td><td>Keyed on part + class + content</td></tr>
+    <tr><td>Metrics</td><td><code>metrics_history.json</code></td><td>--</td><td>Appended after each run</td></tr>
+  </table>
+
+  <p>CLI flags: <code>--no-cache</code> to bypass, <code>--clear-cache</code> to delete before run.</p>
+
+  <h2 id="new-classes">10. Adding New Part Classes</h2>
+
+  <p>Edit <code>src/attr_schema.py</code>:</p>
+
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button># 1. Add to KNOWN_CLASSES (if not already there):
+KNOWN_CLASSES = [
+    ...
+    "My New Class",
+]
+
+# 2. Add canonical attribute schema:
+CLASS_SCHEMAS["My New Class"] = [
+    "Attribute 1", "Attribute 2", "Material", "Finish",
+]
+
+# 3. Add alias variants:
+ALIASES["alt name for attr 1"] = "Attribute 1"</pre>
+
+  <p>Optionally add abbreviation aliases to <code>CLASS_ALIASES</code> in <code>src/class_extractor.py</code> for deterministic classification.</p>
+
+  <h2 id="optimization">11. Optimization Features</h2>
+
+  <table>
+    <tr><th>Feature</th><th>Description</th><th>Savings</th></tr>
+    <tr><td>Batch classification</td><td>50 parts per LLM call</td><td>~95% fewer tokens</td></tr>
+    <tr><td>Deterministic classification</td><td>Pattern matching from web content</td><td>100% for matched</td></tr>
+    <tr><td>Regex pre-extraction</td><td>Tables + patterns before LLM</td><td>Smaller prompts</td></tr>
+    <tr><td>LLM response cache</td><td>90-day classify / 30-day extract</td><td>100% for cached</td></tr>
+    <tr><td>URL cache</td><td>30-day TTL, shared across modes</td><td>Skips search</td></tr>
+    <tr><td>Manufacturer rotation</td><td>Round-robin by manufacturer</td><td>Reduces bot detection</td></tr>
+    <tr><td>Distributor APIs</td><td>Structured data, bypasses LLM</td><td>100% for API-matched</td></tr>
+  </table>
+
+  <h2 id="deployment">12. Deployment</h2>
+
+  <h3>Local Development</h3>
+  <p>No special deployment needed. Run directly with Python.</p>
+
+  <h3>Production (large batches)</h3>
+  <ul>
+    <li>Use <code>main_cc.py</code> with <code>--workers 8</code> for maximum throughput</li>
+    <li>Ensure <code>claude</code> CLI is configured for your enterprise backend (Azure, etc.)</li>
+    <li>Progress auto-saves; safe to interrupt and resume</li>
+    <li>Output files written every 50 parts (main_cc.py) or 10 parts (main.py)</li>
+  </ul>
+
+  <h3>Docker (optional)</h3>
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button># No Dockerfile included yet. For containerization:
+# Base image: python:3.11-slim
+# Install requirements + optional cloakbrowser
+# Mount input/ and output/ volumes</pre>
+
+  <h2 id="checklist">Setup Checklist</h2>
+
+  <p>Track your setup progress. State is saved in your browser (localStorage).</p>
+
+  <div class="check-section">Initial Setup</div>
+  <ul class="checklist" id="checklist">
+    <li data-key="python" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Python 3.11+ installed</div></li>
+    <li data-key="clone" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Repository cloned</div></li>
+    <li data-key="venv" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Virtual environment created and activated</div></li>
+    <li data-key="deps" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">pip install -r requirements.txt completed</div></li>
+    <li data-key="envfile" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">.env file created from .env.example</div></li>
+    <li data-key="llm" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">LLM provider and API key configured</div></li>
+  </ul>
+
+  <div class="check-section">Optional Enhancements</div>
+  <ul class="checklist">
+    <li data-key="digikey" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">DigiKey API configured</div></li>
+    <li data-key="mouser" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Mouser API configured</div></li>
+    <li data-key="mcmaster" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">McMaster API configured</div></li>
+    <li data-key="cloak" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">CloakBrowser installed (pip install cloakbrowser)</div></li>
+    <li data-key="azure" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Azure OpenAI configured (enterprise)</div></li>
+    <li data-key="bedrock" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">AWS Bedrock configured (enterprise)</div></li>
+  </ul>
+
+  <div class="check-section">First Run</div>
+  <ul class="checklist">
+    <li data-key="input" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Input Excel placed in input/ folder</div></li>
+    <li data-key="ran" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Ran classification (any mode)</div></li>
+    <li data-key="output" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Verified output files in output/</div></li>
+    <li data-key="accuracy" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Checked attribute accuracy</div></li>
+    <li data-key="metrics" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Reviewed metrics summary</div></li>
+  </ul>
+
+  <button class="reset-btn" onclick="resetChecklist()">Reset Checklist</button>
+
+</main>
 
 <script>
-function copyCode(btn) {
-  const block = btn.closest('.terminal');
-  const code = block.querySelector('.terminal-body').textContent;
-  navigator.clipboard.writeText(code).then(() => { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000); });
+const STORAGE_KEY = 'partclassifier-setup-checklist';
+
+function loadChecklist(){
+  try{
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  }catch(e){return {}}
 }
 
-const STORAGE_KEY = 'partclassifier-setup-checklist';
-function toggleCheck(item) {
-  item.classList.toggle('checked');
-  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  data[item.dataset.key] = item.classList.contains('checked');
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+function saveChecklist(state){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function toggleCheck(li){
+  const key=li.dataset.key;
+  const state=loadChecklist();
+  if(state[key]){delete state[key];li.classList.remove('checked')}
+  else{state[key]=true;li.classList.add('checked')}
+  saveChecklist(state);
   updateProgress();
 }
-function updateProgress() {
-  const items = document.querySelectorAll('.check-item');
-  const checked = document.querySelectorAll('.check-item.checked').length;
-  const pct = Math.round((checked / items.length) * 100);
-  document.getElementById('progressBar').style.width = pct + '%';
-  document.getElementById('progressCount').textContent = checked + ' / ' + items.length + ' completed';
+
+function resetChecklist(){
+  localStorage.removeItem(STORAGE_KEY);
+  document.querySelectorAll('.checklist li').forEach(li=>li.classList.remove('checked'));
+  updateProgress();
 }
-(function() {
-  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  document.querySelectorAll('.check-item').forEach(item => { if (data[item.dataset.key]) item.classList.add('checked'); });
+
+function updateProgress(){
+  const state=loadChecklist();
+  const items=document.querySelectorAll('.checklist li[data-key]');
+  const total=items.length;
+  const done=Object.keys(state).length;
+  const pct=total?Math.round(100*done/total):0;
+  document.getElementById('progress-pct').textContent=pct+'%';
+  document.getElementById('progress-fill').style.width=pct+'%';
+}
+
+// Init
+(function(){
+  const state=loadChecklist();
+  document.querySelectorAll('.checklist li[data-key]').forEach(li=>{
+    if(state[li.dataset.key]) li.classList.add('checked');
+  });
   updateProgress();
 })();
 
-const sidebarLinks = document.querySelectorAll('.sidebar nav a');
-const allSections = document.querySelectorAll('[id].step-section, [id].checklist-section');
-window.addEventListener('scroll', () => {
-  let current = '';
-  allSections.forEach(s => { if (window.scrollY >= s.offsetTop - 120) current = s.id; });
-  sidebarLinks.forEach(a => { a.classList.toggle('active', a.getAttribute('href') === '#' + current); });
+function copyCode(btn){
+  const pre=btn.parentElement;
+  const code=pre.textContent.replace('Copy','').trim();
+  navigator.clipboard.writeText(code).then(()=>{
+    btn.textContent='Copied!';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);
+  });
+}
+
+function toggleCollapsible(header){
+  header.classList.toggle('open');
+  header.nextElementSibling.classList.toggle('open');
+}
+
+const navLinks=document.querySelectorAll('.sidebar nav a[href^="#"]');
+const sections=[];
+navLinks.forEach(link=>{
+  const id=link.getAttribute('href').slice(1);
+  const el=document.getElementById(id);
+  if(el) sections.push({el,link});
 });
+function updateSpy(){
+  let current=sections[0];
+  for(const s of sections){
+    if(s.el.getBoundingClientRect().top<=120) current=s;
+  }
+  navLinks.forEach(l=>l.classList.remove('active'));
+  if(current) current.link.classList.add('active');
+}
+window.addEventListener('scroll',updateSpy);
+updateSpy();
+navLinks.forEach(link=>link.addEventListener('click',()=>{
+  if(window.innerWidth<=900) document.querySelector('.sidebar').classList.remove('open');
+}));
 </script>
 </body>
 </html>
