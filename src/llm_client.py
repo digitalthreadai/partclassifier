@@ -227,30 +227,33 @@ class LLMClient:
         self._client = AsyncAnthropicBedrock(aws_region=region)
         self._is_anthropic = True  # Bedrock uses the same Anthropic message format
 
-    async def chat(self, messages: list[dict], max_tokens: int = 1000) -> str:
+    async def chat(self, messages: list[dict], max_tokens: int = 1000,
+                   temperature: float | None = None) -> str:
         """
         Send a chat completion request and return the response text.
 
         Args:
             messages: List of {"role": "system"|"user"|"assistant", "content": "..."}
             max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0 = deterministic). None = provider default.
 
         Returns:
             The assistant's response text.
         """
         if self._is_anthropic:
-            return await self._chat_anthropic(messages, max_tokens)
-        return await self._chat_openai(messages, max_tokens)
+            return await self._chat_anthropic(messages, max_tokens, temperature)
+        return await self._chat_openai(messages, max_tokens, temperature)
 
-    async def _chat_openai(self, messages: list[dict], max_tokens: int) -> str:
-        response = await self._client.chat.completions.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            messages=messages,
-        )
+    async def _chat_openai(self, messages: list[dict], max_tokens: int,
+                           temperature: float | None = None) -> str:
+        kwargs = dict(model=self.model, max_tokens=max_tokens, messages=messages)
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        response = await self._client.chat.completions.create(**kwargs)
         return response.choices[0].message.content.strip()
 
-    async def _chat_anthropic(self, messages: list[dict], max_tokens: int) -> str:
+    async def _chat_anthropic(self, messages: list[dict], max_tokens: int,
+                              temperature: float | None = None) -> str:
         # Anthropic separates the system prompt from messages
         system_text = ""
         user_messages = []
@@ -267,6 +270,8 @@ class LLMClient:
         )
         if system_text.strip():
             kwargs["system"] = system_text.strip()
+        if temperature is not None:
+            kwargs["temperature"] = temperature
 
         response = await self._client.messages.create(**kwargs)
         return response.content[0].text.strip()

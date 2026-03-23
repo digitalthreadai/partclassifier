@@ -57,7 +57,6 @@ CLASS_ALIASES: dict[str, str] = {
     "pipe fitting": "Pipe Fitting",
     # Pneumatics
     "solenoid valve": "Solenoid Valve",
-    "solenoid": "Solenoid Valve",
     "pneumatic cylinder": "Pneumatic Cylinder",
     "air cylinder": "Pneumatic Cylinder",
     "round cylinder": "Pneumatic Cylinder",
@@ -68,9 +67,9 @@ CLASS_ALIASES: dict[str, str] = {
     # Sensors
     "proximity sensor": "Proximity Sensor",
     "inductive sensor": "Proximity Sensor",
-    "proximity": "Proximity Sensor",
+    "proximity detector": "Proximity Sensor",
     "photoelectric sensor": "Photoelectric Sensor",
-    "photoelectric": "Photoelectric Sensor",
+    "photoelectric detector": "Photoelectric Sensor",
     "fiber optic sensor": "Fiber Optic Sensor",
     "fiber sensor": "Fiber Optic Sensor",
     "fiber unit": "Fiber Optic Sensor",
@@ -146,13 +145,31 @@ _LABEL_RE = re.compile(
 )
 
 
-def extract_class_from_content(content: str, source_url: str = "") -> str | None:
+def extract_class_from_content(
+    content: str,
+    source_url: str = "",
+    mfg_name: str = "",
+    mfg_part_num: str = "",
+) -> str | None:
     """Extract part class from scraped web content using pattern matching.
 
     Returns a KNOWN_CLASSES name if found with sufficient confidence, or None.
+    If mfg_name/mfg_part_num are provided, verifies the content is actually
+    about the right part before trusting the classification.
     """
     if not content or len(content) < 50:
         return None
+
+    # Source relevance check: verify part number appears in content or URL
+    # Only checks part number — NOT manufacturer name, because cross-manufacturer
+    # distributor sites (e.g., NSK bearing on NTN website) are valid sources
+    if mfg_part_num:
+        pn_lower = mfg_part_num.lower()
+        pn_in_content = pn_lower in content.lower()
+        pn_in_url = pn_lower in source_url.lower() if source_url else False
+        if not pn_in_content and not pn_in_url:
+            # Page doesn't mention this part number at all — wrong page
+            return None
 
     head = content[:500].lower()
     full = content.lower()

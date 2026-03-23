@@ -21,7 +21,7 @@ HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
 
 # Result columns written before the dynamic attribute columns
-RESULT_PREFIX_COLS = ["Part Class", "Source URL"]
+RESULT_PREFIX_COLS = ["Part Class", "TC Class ID", "Source URL"]
 
 
 class ExcelHandler:
@@ -100,10 +100,11 @@ class ExcelHandler:
             for col_idx, col_name in enumerate(INPUT_COLUMNS, start=1):
                 ws.cell(row=row_idx, column=col_idx, value=part.get(col_name))
 
-            # Result prefix columns
+            # Result prefix columns: Part Class, TC Class ID, Source URL
             offset = len(INPUT_COLUMNS) + 1
             ws.cell(row=row_idx, column=offset, value=r.get("part_class", ""))
-            ws.cell(row=row_idx, column=offset + 1, value=r.get("source_url", ""))
+            ws.cell(row=row_idx, column=offset + 1, value=r.get("tc_class_id", ""))
+            ws.cell(row=row_idx, column=offset + 2, value=str(r.get("source_url", "")))
 
             # Attribute columns
             attr_offset = offset + len(RESULT_PREFIX_COLS)

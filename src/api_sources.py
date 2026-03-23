@@ -32,6 +32,7 @@ class SourceResult:
     source_url: str | None = None           # citation URL
     attributes: dict[str, str] | None = None  # pre-extracted attrs (bypasses LLM)
     source_name: str = ""                   # e.g. "DigiKey API", "web"
+    tables: list[dict] | None = None        # HTML tables as [{header: value}]
 
 
 # ── Unit conversion helper ────────────────────────────────────────────────────

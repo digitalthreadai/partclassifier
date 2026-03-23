@@ -1,8 +1,8 @@
 """
-Part Classification Agent — Claude Code CLI edition
+Part Classification Agent - Claude Code CLI edition
 ====================================================
 Uses the `claude` CLI as the LLM and web search backend.
-No API keys required — uses whatever LLM backend Claude Code is configured with.
+No API keys required - uses whatever LLM backend Claude Code is configured with.
 
 Pipeline:
   1. Batch classification: classify all parts in batches of 100 (single CLI call each)
@@ -28,15 +28,22 @@ Prerequisites:
     See: https://docs.anthropic.com/en/docs/claude-code
 """
 
+import io
 import json
 import sys
 import threading
 import time
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Fix Windows console encoding — allow Unicode chars from scraped content
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 import asyncio
+
+from src.shared import rotate_manufacturers
 
 BASE_DIR      = Path(__file__).parent
 
@@ -82,28 +89,8 @@ def safe_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def _rotate_manufacturers(parts: list[dict]) -> list[dict]:
-    """Reorder parts so same-manufacturer parts aren't adjacent.
 
-    Round-robin interleave by manufacturer name to space out requests
-    to the same site (reduces bot detection risk).
-    """
-    buckets: dict[str, list[dict]] = defaultdict(list)
-    for p in parts:
-        mfg = str(p.get("Manufacturer Name") or "").strip().upper()
-        buckets[mfg].append(p)
-
-    # Sort buckets largest-first so the most common manufacturer gets spread widest
-    sorted_buckets = sorted(buckets.values(), key=len, reverse=True)
-
-    rotated: list[dict] = []
-    while any(sorted_buckets):
-        for bucket in sorted_buckets:
-            if bucket:
-                rotated.append(bucket.pop(0))
-        sorted_buckets = [b for b in sorted_buckets if b]
-
-    return rotated
+# _rotate_manufacturers is now imported from src.shared
 
 
 # ── Progress persistence ─────────────────────────────────────────────────────
@@ -233,7 +220,7 @@ def process_part(
     part: dict, client, index: int, total: int, part_class: str,
     api_sources: list | None = None,
 ) -> dict:
-    """Process a single part: scrape → classify → extract (single web scrape).
+    """Process a single part: scrape -> classify -> extract (single web scrape).
 
     Flow:
       1. Web scrape once via curl_cffi (WebScraper)
@@ -259,25 +246,25 @@ def process_part(
             # Try cached URL first
             cached_url = scraper._cache.get(mfg_part_num)
             if cached_url:
-                scraped_content = scraper._scrape_url(cached_url)
-                if scraped_content and len(scraped_content) >= 200:
+                result = scraper._scrape_url(cached_url)
+                if result and result.content and len(result.content) >= 200:
+                    scraped_content = result.content
                     scraped_url = cached_url
-                else:
-                    scraped_content = None
 
             # If no cache hit, search DuckDuckGo
             if not scraped_content:
                 urls = scraper._search_duckduckgo(f"{mfg_name} {mfg_part_num} specifications")
                 for url in urls[:3]:
-                    scraped_content = scraper._scrape_url(url)
-                    if scraped_content and len(scraped_content) >= 200:
+                    result = scraper._scrape_url(url)
+                    if result and result.content and len(result.content) >= 200:
+                        scraped_content = result.content
                         scraped_url = url
                         # Save to cache for later use by Claude CLI
                         scraper._cache[mfg_part_num] = url
-                        from src.web_scraper import _save_cache
-                        _save_cache(scraper._cache)
+                        from src.shared import save_cache
+                        from src.web_scraper import _CACHE_PATH
+                        save_cache(scraper._cache, _CACHE_PATH)
                         break
-                    scraped_content = None
 
             scraper._session.close()
         except Exception as e:
@@ -286,7 +273,10 @@ def process_part(
     # ── STEP 2: Classify from scraped content (no LLM) ──────────────────────
     if part_class in ("Unclassified", "Unknown", ""):
         if scraped_content and len(scraped_content) >= 100:
-            extracted_class = extract_class_from_content(scraped_content, scraped_url or "")
+            extracted_class = extract_class_from_content(
+                scraped_content, scraped_url or "",
+                mfg_name=mfg_name, mfg_part_num=mfg_part_num,
+            )
             if extracted_class:
                 part_class = extracted_class
                 safe_print(f"  [{index}/{total}] Classified from web content: {part_class}")
@@ -337,22 +327,22 @@ def process_part(
         attr_text = " ".join(f"{k}: {v}" for k, v in attributes.items())
         extracted_class = extract_class_from_content(attr_text, source_url)
         if extracted_class:
-            safe_print(f"  [{index}/{total}] Reclassified from attrs: {part_class} → {extracted_class}")
+            safe_print(f"  [{index}/{total}] Reclassified from attrs: {part_class} -> {extracted_class}")
             part_class = extracted_class
         else:
             attr_desc = ", ".join(f"{k}: {v}" for k, v in list(attributes.items())[:5])
-            reclassify_text = f"{mfg_name} {mfg_part_num} — {attr_desc}"
+            reclassify_text = f"{mfg_name} {mfg_part_num} - {attr_desc}"
             try:
                 new_class = client.classify_single(reclassify_text)
                 if new_class and new_class != "Unclassified":
-                    safe_print(f"  [{index}/{total}] Reclassified (LLM): {part_class} → {new_class}")
+                    safe_print(f"  [{index}/{total}] Reclassified (LLM): {part_class} -> {new_class}")
                     part_class = new_class
             except Exception as e:
                 safe_print(f"  [{index}/{total}] Reclassify failed: {e}")
 
     # Fallback if nothing found at all
     if not attributes:
-        safe_print(f"  [{index}/{total}] Web search returned nothing — falling back to part name")
+        safe_print(f"  [{index}/{total}] Web search returned nothing - falling back to part name")
         source_url = "part name"
         attributes = client.extract_from_part_name(
             part_name or f"{mfg_name} {mfg_part_num}", part_class, mfg_part_num, unit_of_measure
@@ -363,12 +353,23 @@ def process_part(
         safe_print(f"  [{index}/{total}] Attrs ({len(attributes)}):\n{attr_lines}")
     else:
         safe_print(f"  [{index}/{total}] Attrs   : (none found)")
+        # Evict cached URL that produced nothing - next run will try fresh search
+        if scraped_url and mfg_part_num:
+            from src.shared import load_cache, save_cache
+            from src.web_scraper import _CACHE_PATH
+            cache = load_cache(_CACHE_PATH)
+            if mfg_part_num in cache:
+                del cache[mfg_part_num]
+                save_cache(cache, _CACHE_PATH)
+                safe_print(f"  [{index}/{total}] Evicted bad cache: {scraped_url[:60]}")
 
+    from src.attr_schema import get_tc_class_id
     return {
-        "part":       part,
-        "part_class": part_class,
-        "attributes": attributes,
-        "source_url": source_url or "",
+        "part":         part,
+        "part_class":   part_class,
+        "tc_class_id":  get_tc_class_id(part_class),
+        "attributes":   attributes,
+        "source_url":   source_url or "",
     }
 
 
@@ -410,7 +411,7 @@ def main() -> None:
     api_sources = get_api_sources()
 
     handler = ExcelHandler(str(EXCEL_PATH), str(OUTPUT_DIR))
-    parts   = _rotate_manufacturers(handler.read_parts())
+    parts   = rotate_manufacturers(handler.read_parts())
     total   = len(parts)
 
     # Load previous progress (unless --fresh)
@@ -463,7 +464,7 @@ def main() -> None:
     shutdown_event = threading.Event()
 
     def worker_task(index: int, part: dict) -> None:
-        """Worker function for thread pool — search+extract only."""
+        """Worker function for thread pool - search+extract only."""
         if shutdown_event.is_set():
             return
 
@@ -476,10 +477,11 @@ def main() -> None:
         except Exception as e:
             safe_print(f"  [{index}/{total}] ERROR: {e}")
             error_result = {
-                "part":       part,
-                "part_class": part_class,
-                "attributes": {},
-                "source_url": f"error: {str(e)[:100]}",
+                "part":         part,
+                "part_class":   part_class,
+                "tc_class_id":  "",
+                "attributes":   {},
+                "source_url":   f"error: {str(e)[:100]}",
             }
             count = tracker.save_result(key, error_result, is_error=True)
 
@@ -512,7 +514,7 @@ def main() -> None:
         safe_print(f"  Total done: {tracker.total_done}/{total}")
         shutdown_event.set()
         tracker.save_to_disk()
-        safe_print(f"  Progress saved — run again to resume.")
+        safe_print(f"  Progress saved - run again to resume.")
         _write_output(handler, tracker)
         sys.exit(0)
 

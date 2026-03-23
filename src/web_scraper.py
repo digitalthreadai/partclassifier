@@ -16,6 +16,8 @@ from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 
 from src.api_sources import SourceResult, get_api_sources
+from src.content_cleaner import extract_content
+from src.shared import load_cache, save_cache
 
 # Optional stealth browser for bot-protected sites (McMaster-Carr, etc.)
 try:
@@ -30,17 +32,6 @@ MAX_CONTENT_CHARS = 10_000
 # Cache file — maps mfg_part_num -> best source URL found on a previous run
 _CACHE_PATH = Path(__file__).parent.parent / "url_cache.json"
 
-def _load_cache() -> dict:
-    if _CACHE_PATH.exists():
-        try:
-            return json.loads(_CACHE_PATH.read_text())
-        except Exception:
-            pass
-    return {}
-
-def _save_cache(cache: dict) -> None:
-    _CACHE_PATH.write_text(json.dumps(cache, indent=2))
-
 # Skip domains that won't have useful specs
 SKIP_DOMAINS = {
     "youtube.com", "amazon.com", "ebay.com", "alibaba.com",
@@ -52,7 +43,7 @@ SKIP_DOMAINS = {
 class WebScraper:
     def __init__(self):
         self._session = cffi_requests.Session(impersonate="chrome124")
-        self._cache = _load_cache()
+        self._cache = load_cache(_CACHE_PATH)
         self._api_sources = get_api_sources()
         self._stealth: StealthScraper | None = None
         if _HAS_STEALTH:
@@ -89,7 +80,7 @@ class WebScraper:
                 if result and result.attributes and len(result.attributes) >= 3:
                     print(f"    Source ({result.source_name}): {result.source_url}")
                     self._cache[mfg_part_num] = result.source_url
-                    _save_cache(self._cache)
+                    save_cache(self._cache, _CACHE_PATH)
                     return result
             except Exception as e:
                 print(f"    {source.name} error: {e}")
@@ -104,7 +95,7 @@ class WebScraper:
                     if result and result.content and len(result.content) >= MIN_USEFUL_CHARS:
                         print(f"    Source (stealth/{mfg_name}): {result.source_url}")
                         self._cache[mfg_part_num] = result.source_url
-                        _save_cache(self._cache)
+                        save_cache(self._cache, _CACHE_PATH)
                         return result
                     else:
                         print(f"    Stealth direct scrape insufficient, continuing...")
@@ -112,14 +103,16 @@ class WebScraper:
         # --- Cache hit: reuse previously found URL ---
         if mfg_part_num in self._cache:
             cached_url = self._cache[mfg_part_num]
-            content = self._scrape_url(cached_url)
-            if content and len(content) >= MIN_USEFUL_CHARS:
+            cached_result = self._scrape_url(cached_url)
+            if cached_result and cached_result.content and len(cached_result.content) >= MIN_USEFUL_CHARS:
                 print(f"    Source (cached): {cached_url}")
-                return SourceResult(content=content, source_url=cached_url, source_name="web")
+                cached_result.source_name = "web/cached"
+                return cached_result
             else:
                 # Cached URL is dead — remove and re-search
                 print(f"    Cached URL failed, re-searching...")
                 del self._cache[mfg_part_num]
+                save_cache(self._cache, _CACHE_PATH)
 
         # --- Search and score all candidates ---
         queries = _build_queries(mfg_name, mfg_part_num, unit)
@@ -137,30 +130,30 @@ class WebScraper:
         preferred = [u for u in all_urls if _is_preferred(u)]
         others    = [u for u in all_urls if not _is_preferred(u)]
 
-        best_content: str | None = None
-        best_url:     str | None = None
-        best_score:   int        = 0
+        best_result:  SourceResult | None = None
+        best_score:   int = 0
 
         for url in preferred + others:
-            content = self._scrape_url(url)
-            if not content or len(content) < MIN_USEFUL_CHARS:
+            sr = self._scrape_url(url)
+            if not sr or not sr.content or len(sr.content) < MIN_USEFUL_CHARS:
                 continue
-            score = _spec_score(content, mfg_part_num)
+            score = _spec_score(sr.content, mfg_part_num)
             # Short-circuit on a trusted hit with solid score
             if _is_preferred(url) and score >= 3:
                 self._cache[mfg_part_num] = url
-                _save_cache(self._cache)
+                save_cache(self._cache, _CACHE_PATH)
                 print(f"    Source (trusted): {url}  [score={score}]")
-                return SourceResult(content=content, source_url=url, source_name="web")
+                return sr
             if score > best_score:
-                best_score, best_content, best_url = score, content, url
+                best_score = score
+                best_result = sr
 
-        if best_url:
-            self._cache[mfg_part_num] = best_url
-            _save_cache(self._cache)
-            reliability = "(trusted)" if _is_preferred(best_url) else "(unverified)"
-            print(f"    Source {reliability}: {best_url}  [score={best_score}]")
-            return SourceResult(content=best_content, source_url=best_url, source_name="web")
+        if best_result:
+            self._cache[mfg_part_num] = best_result.source_url
+            save_cache(self._cache, _CACHE_PATH)
+            reliability = "(trusted)" if _is_preferred(best_result.source_url) else "(unverified)"
+            print(f"    Source {reliability}: {best_result.source_url}  [score={best_score}]")
+            return best_result
 
         # --- Stealth fallback: search + scrape via browser when curl_cffi found nothing ---
         if _HAS_STEALTH:
@@ -171,7 +164,7 @@ class WebScraper:
                 if result and result.content and len(result.content) >= MIN_USEFUL_CHARS:
                     print(f"    Source (stealth/{mfg_name}): {result.source_url}")
                     self._cache[mfg_part_num] = result.source_url
-                    _save_cache(self._cache)
+                    save_cache(self._cache, _CACHE_PATH)
                     return result
 
         return SourceResult(source_name="none")
@@ -199,8 +192,12 @@ class WebScraper:
             print(f"    Search error: {e}")
             return []
 
-    def _scrape_url(self, url: str) -> str | None:
-        """Fetch a URL and return cleaned plain text."""
+    def _scrape_url(self, url: str) -> SourceResult | None:
+        """Fetch a URL, extract tables + clean text via content_cleaner.
+
+        Returns a SourceResult with content, tables, and source_url.
+        Falls back to basic text extraction if content_cleaner fails.
+        """
         try:
             resp = self._session.get(
                 url,
@@ -214,15 +211,17 @@ class WebScraper:
             if resp.status_code >= 400:
                 return None
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "noscript", "nav", "header", "footer",
-                              "aside", "iframe", "form"]):
-                tag.decompose()
+            result = extract_content(resp.text, url)
+            text = result.combined
+            if not text or len(text) < MIN_USEFUL_CHARS:
+                return None
 
-            text = soup.get_text(separator="\n", strip=True)
-            # Collapse excessive blank lines
-            text = re.sub(r"\n{3,}", "\n\n", text)
-            return text[:MAX_CONTENT_CHARS] if text else None
+            return SourceResult(
+                content=text[:MAX_CONTENT_CHARS],
+                source_url=url,
+                source_name="web",
+                tables=result.tables if result.tables else None,
+            )
 
         except Exception as e:
             print(f"    Scrape error ({url[:60]}): {e}")
@@ -285,6 +284,20 @@ PREFERRED_DOMAINS = {
     "fastenal.com",
     "zoro.com",
     "lily-bearing.com",
+    "pall.com",
+    "shop.pall.com",
+    "shop.pall.co.uk",
+    "keyence.com",
+    "swagelok.com",
+    "products.swagelok.com",
+    "festo.com",
+    "smc.com",
+    "smcpneumatics.com",
+    "omron.com",
+    "te.com",
+    "digikey.com",
+    "mouser.com",
+    "datasheets.com",
 }
 
 
@@ -294,14 +307,24 @@ def _extract_ddg_url(href: str) -> str | None:
         return None
     # DuckDuckGo HTML wraps links: /l/?uddg=<encoded_url>&...
     if "uddg=" in href:
+        match = re.search(r"uddg=([^&]+)", href)
+        if not match:
+            return None
         try:
-            encoded = re.search(r"uddg=([^&]+)", href).group(1)
-            return urllib.parse.unquote(encoded)
+            url = urllib.parse.unquote(match.group(1))
         except Exception:
             return None
-    if href.startswith("http"):
-        return href
-    return None
+    elif href.startswith("http"):
+        url = href
+    else:
+        return None
+
+    # Reject DuckDuckGo ad/tracking redirect URLs
+    domain = _domain(url)
+    if "duckduckgo.com" in domain:
+        return None
+
+    return url
 
 
 SPEC_KEYWORDS = [
@@ -329,13 +352,13 @@ def _domain(url: str) -> str:
 
 def _is_preferred(url: str) -> bool:
     d = _domain(url)
-    return any(p in d for p in PREFERRED_DOMAINS)
+    return any(d == p or d.endswith("." + p) for p in PREFERRED_DOMAINS)
 
 
 def _skip_url(url: str) -> bool:
     """Return True if the URL should be skipped."""
     try:
         domain = urllib.parse.urlparse(url).netloc.lower()
-        return any(skip in domain for skip in SKIP_DOMAINS)
+        return any(domain == skip or domain.endswith("." + skip) for skip in SKIP_DOMAINS)
     except Exception:
         return False

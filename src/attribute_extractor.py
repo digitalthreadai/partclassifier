@@ -15,16 +15,14 @@ def _unit_instructions(unit_of_measure: str) -> tuple[str, str, str]:
             "metric (mm)",
             "mm",
             "All dimensional values MUST be in mm. "
-            "If the source provides inches, convert to mm (1 inch = 25.4 mm). "
-            "If the source already provides both, use the mm values.",
+            "If source provides inches, convert (1 in = 25.4 mm).",
         )
-    else:  # default: inches
+    else:
         return (
             "imperial (inches)",
             "inches",
             "All dimensional values MUST be in inches. "
-            "If the source provides mm, convert to inches (1 mm = 0.03937 inches). "
-            "If the source already provides both, use the inch values.",
+            "If source provides mm, convert (1 mm = 0.03937 in).",
         )
 
 
@@ -32,10 +30,10 @@ def _example_json(unit_short: str) -> str:
     if unit_short == "mm":
         return ('{"Inner Diameter": "21.2 mm", "Outer Diameter": "33.6 mm", '
                 '"Thickness": "3.8 mm to 4.2 mm", "Material": "18-8 Stainless Steel", '
-                '"Standard": "DIN 127B", "Hardness": "Not Rated"}')
+                '"Hardness": "Rockwell C34", "Standard": "DIN 127B"}')
     return ('{"Inner Diameter": "0.835 in", "Outer Diameter": "1.323 in", '
             '"Thickness": "0.150 in to 0.165 in", "Material": "18-8 Stainless Steel", '
-            '"Standard": "ASME B18.21.1", "Hardness": "Not Rated"}')
+            '"Hardness": "Rockwell C34", "Standard": "ASME B18.21.1"}')
 
 
 def _parse_json(raw: str) -> dict:
@@ -54,116 +52,166 @@ def _parse_json(raw: str) -> dict:
     return {}
 
 
+def _clean_result(result: dict, part_class: str) -> dict:
+    """Remove junk keys and normalize."""
+    skip_keys = {"part number", "part name", "part no", "part #", "_source_url",
+                  "description", "features", "overview", "product name", "category",
+                  "manufacturer", "brand", "model", "series", "url", "image"}
+    cleaned = {
+        k: v for k, v in result.items()
+        if k.lower() not in skip_keys
+        and str(v).strip().lower() not in ("", "none", "not specified", "n/a", "unknown", "null")
+    }
+    return normalize_attrs(cleaned, part_class)
+
+
 class AttributeExtractor:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
     async def extract(self, raw_content: str, part_class: str, mfg_part_num: str,
-                      part_name: str = "", unit_of_measure: str = "") -> dict[str, str]:
-        """Parse raw page text and return a dict of attribute -> value."""
+                      part_name: str = "", unit_of_measure: str = "",
+                      pre_extracted: dict[str, str] | None = None) -> dict[str, str]:
+        """Parse raw page text and return a dict of attribute -> value.
+
+        Args:
+            pre_extracted: Optional regex-extracted values for LLM to validate/augment.
+        """
         truncated = raw_content[:MAX_CONTENT_CHARS]
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
-
         schema_attrs = get_schema(part_class)
-        numbered_attrs = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(schema_attrs))
+
+        # Build reference context from regex pre-extraction (if available)
+        reference_block = ""
+        if pre_extracted and len(pre_extracted) >= 1:
+            pre_json = json.dumps(pre_extracted, ensure_ascii=False)
+            reference_block = (
+                f"Pre-extracted values (verify, correct, and add any missing):\n"
+                f"{pre_json}\n\n"
+            )
+
+        # Use only the unit-appropriate example (saves ~100 tokens)
+        example = _example_json(unit_short)
+
+        # Build priority hints from schema (focus + breadth)
+        priority_line = ""
+        if schema_attrs:
+            priority_line = (
+                f"PRIORITY ATTRIBUTES (extract these first if present):\n"
+                f"  {', '.join(schema_attrs)}\n\n"
+            )
 
         raw = await self.llm.chat(
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are a mechanical parts data extraction specialist.\n"
-                        "CRITICAL RULES:\n"
-                        "- Extract ONLY values that are EXPLICITLY stated in the provided content.\n"
-                        "- NEVER guess, infer, calculate, or derive values that are not written in the text.\n"
-                        "- If a value is not explicitly present in the content, OMIT that attribute entirely.\n"
-                        "- Return ONLY valid JSON. No markdown fences, no explanation, no commentary."
+                        "Industrial parts data extraction specialist. "
+                        "Extract ONLY explicitly stated values. Never guess or infer. "
+                        "Return ONLY valid JSON. No markdown, no explanation."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        f"Part Number      : {mfg_part_num}\n"
-                        f"Part Name        : {part_name}\n"
-                        f"Part Class       : {part_class}\n"
-                        f"Target Unit      : {unit_label}\n"
-                        f"UNIT RULE        : {convert_note}\n\n"
-                        f"Search the content below for EACH of these attributes, one by one:\n"
-                        f"{numbered_attrs}\n\n"
-                        f"Also look for: Material, Hardness, Standard, System of Measurement, "
-                        f"Performance, RoHS, REACH (if present).\n\n"
-                        f"EXTRACTION RULES:\n"
-                        f"  1. Use the EXACT attribute names listed above — do NOT rename them\n"
-                        f"  2. All dimensional values must be in {unit_short}\n"
-                        f"  3. Copy values exactly as they appear — do not round or reformat\n"
-                        f"  4. For ranges, use the format: \"3.8 mm to 4.2 mm\"\n"
-                        f"  5. OMIT any attribute whose value is not explicitly found in the content\n\n"
-                        f"EXAMPLE INPUT (mm):\n"
-                        f"  Content contains: \"Inner Diameter 21.2mm ... Outer Diameter 33.6mm ... "
-                        f"Thickness 3.8 to 4.2mm ... Material: 18-8 Stainless Steel ... DIN 127B\"\n"
-                        f"EXAMPLE OUTPUT:\n"
-                        f"  {_example_json('mm')}\n\n"
-                        f"EXAMPLE INPUT (inches):\n"
-                        f"  Content contains: \"Inside Diameter .835\\\" ... OD 1.323\\\" ... "
-                        f"Thickness .150\\\" to .165\\\" ... 18-8 SS ... ASME B18.21.1\"\n"
-                        f"EXAMPLE OUTPUT:\n"
-                        f"  {_example_json('inches')}\n\n"
-                        f"NOW EXTRACT FROM THIS CONTENT:\n---\n{truncated}\n---\n\n"
-                        f"Return ONLY a flat JSON object."
+                        f"Part: {mfg_part_num} | Class: {part_class} | Unit: {unit_label}\n"
+                        f"UNIT RULE: {convert_note}\n\n"
+                        f"{reference_block}"
+                        f"{priority_line}"
+                        f"Then extract ALL other specifications found in the content.\n"
+                        f"Maximize coverage — extract as many attributes as possible, "
+                        f"including dimensions, material, finish, hardness, tolerances, "
+                        f"standards, compliance, and any other technical specifications.\n\n"
+                        f"RULES:\n"
+                        f"1. For priority attributes above, use those exact names.\n"
+                        f"2. For other attributes, use names as they appear in the content.\n"
+                        f"3. All dimensional values in {unit_short}. Convert if needed.\n"
+                        f"4. Ranges: \"3.8 mm to 4.2 mm\". Omit attributes not found.\n"
+                        f"EXAMPLE: {example}\n\n"
+                        f"CONTENT:\n---\n{truncated}\n---\n\n"
+                        f"Return flat JSON object with ALL extracted attributes."
                     ),
                 },
             ],
             max_tokens=1_500,
+            temperature=0,
         )
 
         result = _parse_json(raw)
-        skip_keys = {"part number", "part name", "part no", "part #"}
-        cleaned = {
-            k: v for k, v in result.items()
-            if k.lower() not in skip_keys
-            and str(v).strip().lower() not in ("", "none", "not specified", "n/a", "unknown", "null")
-        }
-        return normalize_attrs(cleaned, part_class)
+        attrs = _clean_result(result, part_class)
+
+        # Validation retry: only if first attempt returned SOME data but missed
+        # >50% of SCHEMA attrs (count schema hits, not total attrs)
+        schema_hits = sum(1 for a in schema_attrs if a in attrs) if schema_attrs else 0
+        if (schema_attrs and attrs and len(attrs) >= 1
+                and schema_hits < len(schema_attrs) * 0.5 and len(truncated) >= 500):
+            missing = [a for a in schema_attrs if a not in attrs]
+            if missing and len(missing) <= 10:
+                retry_attrs = await self._retry_missing(
+                    truncated, part_class, mfg_part_num, unit_short, convert_note, missing
+                )
+                if retry_attrs:
+                    attrs.update(retry_attrs)
+
+        return attrs
+
+    async def _retry_missing(self, content: str, part_class: str, mfg_part_num: str,
+                              unit_short: str, convert_note: str,
+                              missing_attrs: list[str]) -> dict[str, str]:
+        """Focused retry for specific missing attributes."""
+        try:
+            raw = await self.llm.chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Extract ONLY explicitly stated values. Return valid JSON only.",
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Part: {mfg_part_num} ({part_class})\n"
+                            f"Find ONLY these attributes: {', '.join(missing_attrs)}\n"
+                            f"Units: {unit_short}. {convert_note}\n\n"
+                            f"CONTENT:\n---\n{content[:4000]}\n---\n\n"
+                            f"Return JSON with found attributes only. Return {{}} if none found."
+                        ),
+                    },
+                ],
+                max_tokens=500,
+                temperature=0,
+            )
+            result = _parse_json(raw)
+            return _clean_result(result, part_class)
+        except Exception:
+            return {}
 
     async def extract_from_part_name(self, part_name: str, part_class: str,
                                      mfg_part_num: str, unit_of_measure: str = "") -> dict[str, str]:
         """Fallback: extract any dimensions encoded in the part name itself."""
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
-
         schema_attrs = get_schema(part_class)
 
         raw = await self.llm.chat(
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You are a mechanical parts expert who decodes abbreviated part names.\n"
-                        "Return ONLY valid JSON. No markdown fences, no explanation."
-                    ),
+                    "content": "Mechanical parts expert. Decode abbreviated part names. Return valid JSON only.",
                 },
                 {
                     "role": "user",
                     "content": (
-                        f"Extract any dimensions or specifications encoded in this part name.\n\n"
-                        f"Part Number  : {mfg_part_num}\n"
-                        f"Part Class   : {part_class}\n"
-                        f"Part Name    : {part_name}\n"
-                        f"Target Unit  : {unit_label}\n"
-                        f"UNIT RULE    : {convert_note}\n\n"
-                        f"USE THESE EXACT ATTRIBUTE NAMES: {', '.join(schema_attrs)}\n\n"
-                        f"EXAMPLES:\n"
-                        f"  Part Name: \"WSHR, SPT LK, M20, 21.2 MM ID, 33.6 MM OD\"\n"
-                        f"  Output: {{\"Screw Size\": \"M20\", \"Inner Diameter\": \"21.2 mm\", "
-                        f"\"Outer Diameter\": \"33.6 mm\"}}\n\n"
-                        f"  Part Name: \"WASHER, 1/4, 1 1/2 OD X .281 ID X .06 THK\"\n"
-                        f"  Output: {{\"Screw Size\": \"1/4\", \"Inner Diameter\": \"0.281 in\", "
-                        f"\"Outer Diameter\": \"1.5 in\", \"Thickness\": \"0.06 in\"}}\n\n"
-                        f"Return a JSON object with values in {unit_short}. "
-                        f"Return {{}} if nothing can be extracted."
+                        f"Extract dimensions from this part name.\n\n"
+                        f"Part: {mfg_part_num} | Class: {part_class} | Name: {part_name}\n"
+                        f"Unit: {unit_label}. {convert_note}\n"
+                        f"Attributes: {', '.join(schema_attrs)}\n\n"
+                        f"EXAMPLE: \"WSHR, SPT LK, M20, 21.2 MM ID\" -> "
+                        f"{{\"Screw Size\": \"M20\", \"Inner Diameter\": \"21.2 mm\"}}\n\n"
+                        f"Return JSON in {unit_short}. Return {{}} if nothing extractable."
                     ),
                 },
             ],
             max_tokens=500,
+            temperature=0,
         )
 
         result = _parse_json(raw)

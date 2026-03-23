@@ -3,6 +3,20 @@
 
 # Output files (generated on each run)
 output/
+output_*/
+
+# Cache and state files
+url_cache.json
+llm_cache.json
+progress*.json
+metrics_history.json
+
+# Benchmark artifacts
+benchmark_*.log
+benchmark_*.json
+benchmark_data.json
+benchmark_summary.json
+benchmark_results/
 
 # Python
 __pycache__/
@@ -12,6 +26,9 @@ __pycache__/
 venv/
 dist/
 build/
+
+# Claude Code
+.claude/
 
 # OS
 .DS_Store
