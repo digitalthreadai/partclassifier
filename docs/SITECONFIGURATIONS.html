@@ -97,20 +97,19 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <div class="section-label">Setup Steps</div>
     <a href="#top" class="active">Overview</a>
     <a href="#python">1. Python Environment</a>
-    <a href="#llm">2. LLM Provider</a>
+    <a href="#llm">2. LLM Provider (8)</a>
     <a href="#apis">3. Distributor APIs</a>
     <a href="#stealth">4. Stealth Browser</a>
     <a href="#input">5. Input Excel</a>
-    <a href="#env-ref">6. Environment Reference</a>
-    <div class="section-label">Running</div>
-    <a href="#running">7. Running the Agent</a>
-    <a href="#output">8. Output</a>
-    <a href="#cache">9. Cache Management</a>
-    <div class="section-label">Advanced</div>
-    <a href="#new-classes">10. New Part Classes</a>
-    <a href="#optimization">11. Optimization</a>
-    <a href="#deployment">12. Deployment</a>
-    <a href="#checklist">Checklist</a>
+    <a href="#schema">6. Classification Schema</a>
+    <div class="section-label">Reference</div>
+    <a href="#env-ref">Environment Variables</a>
+    <a href="#running">Running the Agent</a>
+    <a href="#output">Output</a>
+    <a href="#caches">Cache Management</a>
+    <a href="#optimization">Optimization</a>
+    <a href="#deploy">Deployment</a>
+    <a href="#checklist">Setup Checklist</a>
   </nav>
   <div class="progress-container">
     <div class="progress-label"><span>Setup Progress</span><span id="progress-pct">0%</span></div>
@@ -121,7 +120,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 
 <main class="content" id="top">
   <h1>Setup Guide</h1>
-  <p class="subtitle">Step-by-step configuration for all execution modes, LLM providers, distributor APIs, and deployment.</p>
+  <p class="subtitle">Step-by-step configuration for PartClassifier. 8 LLM providers, 3 distributor APIs, stealth browser, Excel-based schema.</p>
 
   <h2 id="python">1. Python Environment</h2>
 
@@ -143,17 +142,19 @@ venv\Scripts\activate        # Windows
 
   <h3>Install dependencies</h3>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>pip install -r requirements.txt</pre>
+  <p>This installs: <code>openai</code>, <code>openpyxl</code>, <code>curl_cffi</code>, <code>beautifulsoup4</code>, <code>python-dotenv</code>, <code>anthropic</code>, <code>httpx</code>, <code>streamlit</code>. CloakBrowser is optional (see Section 4).</p>
 
-  <p>Installs: <code>openai</code>, <code>openpyxl</code>, <code>curl_cffi</code>, <code>beautifulsoup4</code>, <code>python-dotenv</code>, <code>anthropic</code>, <code>httpx</code>, <code>streamlit</code>. CloakBrowser is optional (Section 4).</p>
-
-  <h2 id="llm">2. LLM Provider Configuration</h2>
+  <h2 id="llm">2. LLM Provider Configuration (8 Providers)</h2>
 
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>cp .env.example .env</pre>
 
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">Groq (free, recommended to start)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">groq</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">gsk_your_groq_key_here</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">groq</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">gsk_your_groq_key_here</span>
+      </div>
       <p>Get key: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a><br>Default model: <code>llama-3.3-70b-versatile</code></p>
     </div></div>
   </div>
@@ -161,7 +162,11 @@ venv\Scripts\activate        # Windows
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">OpenAI</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">openai</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">sk-your_openai_key_here</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">gpt-4o</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">openai</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">sk-your_openai_key_here</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">gpt-4o</span>
+      </div>
       <p>Get key: <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></p>
     </div></div>
   </div>
@@ -169,7 +174,11 @@ venv\Scripts\activate        # Windows
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">Anthropic (Claude)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">anthropic</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">sk-ant-your_anthropic_key_here</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">claude-sonnet-4-20250514</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">anthropic</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">sk-ant-your_anthropic_key_here</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">claude-sonnet-4-20250514</span>
+      </div>
       <p>Get key: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a><br>Other models: <code>claude-opus-4-20250514</code>, <code>claude-haiku-4-5-20251001</code></p>
     </div></div>
   </div>
@@ -177,7 +186,13 @@ venv\Scripts\activate        # Windows
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">Azure OpenAI (enterprise)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">azure_openai</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_azure_api_key</span><br><span class="env-key">AZURE_OPENAI_ENDPOINT</span>=<span class="env-val">https://your-resource.openai.azure.com/</span><br><span class="env-key">AZURE_OPENAI_API_VERSION</span>=<span class="env-val">2024-12-01-preview</span><br><span class="env-key">AZURE_OPENAI_DEPLOYMENT</span>=<span class="env-val">your-deployment-name</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">azure_openai</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_azure_api_key</span><br>
+        <span class="env-key">AZURE_OPENAI_ENDPOINT</span>=<span class="env-val">https://your-resource.openai.azure.com/</span><br>
+        <span class="env-key">AZURE_OPENAI_API_VERSION</span>=<span class="env-val">2024-12-01-preview</span><br>
+        <span class="env-key">AZURE_OPENAI_DEPLOYMENT</span>=<span class="env-val">your-deployment-name</span>
+      </div>
       <p>Get access: <a href="https://portal.azure.com" target="_blank">portal.azure.com</a></p>
     </div></div>
   </div>
@@ -185,7 +200,13 @@ venv\Scripts\activate        # Windows
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">AWS Bedrock (enterprise)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">bedrock</span><br><span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">bedrock</span><br>
+        <span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span><br>
+        <span class="env-comment"># Optional explicit credentials:</span><br>
+        <span class="env-key">AWS_ACCESS_KEY_ID</span>=<span class="env-val">your_access_key</span><br>
+        <span class="env-key">AWS_SECRET_ACCESS_KEY</span>=<span class="env-val">your_secret_key</span>
+      </div>
       <p>No API key needed -- uses default AWS credential chain (env vars, <code>~/.aws/credentials</code>, IAM role).</p>
     </div></div>
   </div>
@@ -193,7 +214,10 @@ venv\Scripts\activate        # Windows
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">Ollama (local, free)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">ollama</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">llama3.1</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">ollama</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">llama3.1</span>
+      </div>
       <p>Install: <a href="https://ollama.ai" target="_blank">ollama.ai</a><br>Then: <code>ollama serve</code> and <code>ollama pull llama3.1</code></p>
     </div></div>
   </div>
@@ -201,7 +225,22 @@ venv\Scripts\activate        # Windows
   <div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible(this)">Custom OpenAI-compatible API</div>
     <div class="collapsible-body"><div class="collapsible-inner">
-      <div class="env-block"><span class="env-key">LLM_PROVIDER</span>=<span class="env-val">custom</span><br><span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_key</span><br><span class="env-key">LLM_BASE_URL</span>=<span class="env-val">https://your-api-endpoint.com/v1</span><br><span class="env-key">LLM_MODEL</span>=<span class="env-val">your-model-name</span></div>
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">custom</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_key</span><br>
+        <span class="env-key">LLM_BASE_URL</span>=<span class="env-val">https://your-api-endpoint.com/v1</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">your-model-name</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Claude Code CLI (zero API keys)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <p>No <code>.env</code> configuration required. Uses the <code>claude</code> CLI installed on PATH.</p>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python main_cc.py                # 4 parallel workers
+python main_cc.py --workers 8    # 8 workers (faster)</pre>
+      <p>Works with any backend configured in Claude Code: Anthropic, Azure, AWS Bedrock, etc.</p>
     </div></div>
   </div>
 
@@ -210,44 +249,65 @@ venv\Scripts\activate        # Windows
   <p>Higher-quality structured data. When an API returns 3+ attributes, LLM extraction is skipped entirely.</p>
 
   <div class="collapsible">
-    <div class="collapsible-header" onclick="toggleCollapsible(this)">DigiKey (free)</div>
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">DigiKey (free, OAuth2)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
       <p>Register at <a href="https://developer.digikey.com" target="_blank">developer.digikey.com</a>:</p>
-      <div class="env-block"><span class="env-key">DIGIKEY_CLIENT_ID</span>=<span class="env-val">your_client_id</span><br><span class="env-key">DIGIKEY_CLIENT_SECRET</span>=<span class="env-val">your_client_secret</span></div>
+      <div class="env-block">
+        <span class="env-key">DIGIKEY_CLIENT_ID</span>=<span class="env-val">your_client_id</span><br>
+        <span class="env-key">DIGIKEY_CLIENT_SECRET</span>=<span class="env-val">your_client_secret</span>
+      </div>
       <p>OAuth2 tokens are auto-cached and refreshed.</p>
     </div></div>
   </div>
 
   <div class="collapsible">
-    <div class="collapsible-header" onclick="toggleCollapsible(this)">Mouser (free)</div>
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Mouser (free, API key)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
       <p>Register at <a href="https://api.mouser.com" target="_blank">api.mouser.com</a>:</p>
-      <div class="env-block"><span class="env-key">MOUSER_API_KEY</span>=<span class="env-val">your_api_key</span></div>
+      <div class="env-block">
+        <span class="env-key">MOUSER_API_KEY</span>=<span class="env-val">your_api_key</span>
+      </div>
       <p>Rate limited: 30 req/min (auto-throttled).</p>
     </div></div>
   </div>
 
   <div class="collapsible">
-    <div class="collapsible-header" onclick="toggleCollapsible(this)">McMaster-Carr (by request)</div>
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">McMaster-Carr (by request, mTLS)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
       <p>Email <code>eprocurement@mcmaster.com</code> for mTLS access:</p>
-      <div class="env-block"><span class="env-key">MCMASTER_BEARER_TOKEN</span>=<span class="env-val">your_token</span><br><span class="env-key">MCMASTER_CLIENT_CERT</span>=<span class="env-val">path/to/client.pem</span><br><span class="env-key">MCMASTER_CLIENT_KEY</span>=<span class="env-val">path/to/client-key.pem</span></div>
+      <div class="env-block">
+        <span class="env-key">MCMASTER_BEARER_TOKEN</span>=<span class="env-val">your_token</span><br>
+        <span class="env-key">MCMASTER_CLIENT_CERT</span>=<span class="env-val">path/to/client.pem</span><br>
+        <span class="env-key">MCMASTER_CLIENT_KEY</span>=<span class="env-val">path/to/client-key.pem</span>
+      </div>
     </div></div>
   </div>
 
   <h2 id="stealth">4. Stealth Browser (optional)</h2>
 
-  <p>CloakBrowser enables scraping bot-protected sites (McMaster-Carr, Fastenal, Grainger). 33 C++ patches to Chromium, bypasses Cloudflare, reCAPTCHA v3, FingerprintJS, Turnstile.</p>
+  <p>CloakBrowser enables scraping bot-protected sites like McMaster-Carr, Fastenal, and Grainger.</p>
 
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>pip install cloakbrowser</pre>
 
-  <p>First run downloads ~200MB Chromium binary. To disable:</p>
+  <p>First run downloads ~200MB Chromium binary automatically. To disable:</p>
+  <div class="env-block">
+    <span class="env-key">STEALTH_BROWSER_ENABLED</span>=<span class="env-val">false</span>
+  </div>
 
-  <div class="env-block"><span class="env-key">STEALTH_BROWSER_ENABLED</span>=<span class="env-val">false</span></div>
+  <p>Features:</p>
+  <ul>
+    <li>33 C++ source-level patches to Chromium</li>
+    <li>Bypasses Cloudflare, reCAPTCHA v3 (0.9 score), FingerprintJS, Turnstile</li>
+    <li>Fresh browser context per scrape (no session fingerprinting)</li>
+    <li>Direct URL patterns for McMaster-Carr, Fastenal, Grainger</li>
+    <li>Optional -- graceful fallback to curl_cffi if not installed</li>
+  </ul>
 
   <h2 id="input">5. Input Excel Preparation</h2>
 
   <p>Place your file at <code>input/PartClassifierInput.xlsx</code>.</p>
+
+  <p>Required columns (exact names):</p>
 
   <table>
     <tr><th>Column</th><th>Description</th><th>Example</th></tr>
@@ -258,17 +318,42 @@ venv\Scripts\activate        # Windows
     <tr><td>Unit of Measure</td><td>Target unit for output values</td><td>inches or mm</td></tr>
   </table>
 
-  <h2 id="env-ref">6. Environment Variables Reference</h2>
+  <p>A sample file with 4 parts is included in the repo.</p>
+
+  <h2 id="schema">6. Classification Schema</h2>
+
+  <h3>Excel-Based Schema (<code>input/ClassificationSchema.xlsx</code>)</h3>
+
+  <p>The primary schema source defining 81 part classes, 46 canonical attributes, and 169 alias mappings. This schema drives:</p>
+  <ul>
+    <li>Which attributes are extracted per class</li>
+    <li>Column ordering in output Excel files</li>
+    <li>Alias normalization (e.g., "Thread Pitch" &rarr; "Pitch")</li>
+    <li>TC Class ID mapping for Teamcenter integration</li>
+  </ul>
+
+  <p>If <code>ClassificationSchema.xlsx</code> is missing, the system falls back to hardcoded schemas in <code>src/attr_schema.py</code>.</p>
+
+  <h3>Adding a New Part Class</h3>
+  <ol>
+    <li><strong>Preferred:</strong> Add to <code>input/ClassificationSchema.xlsx</code> with class name, TC Class ID, and attributes</li>
+    <li><strong>Fallback:</strong> Edit <code>src/attr_schema.py</code> -- add to KNOWN_CLASSES, CLASS_SCHEMAS, and ALIASES</li>
+    <li><strong>Optional:</strong> Add abbreviation aliases to CLASS_ALIASES in <code>src/class_extractor.py</code> for deterministic classification</li>
+  </ol>
+
+  <h2 id="env-ref">Environment Variables Reference</h2>
 
   <table>
     <tr><th>Variable</th><th>Required</th><th>Description</th></tr>
-    <tr><td><code>LLM_PROVIDER</code></td><td>Yes*</td><td>groq, openai, anthropic, azure_openai, bedrock, ollama, custom</td></tr>
+    <tr><td><code>LLM_PROVIDER</code></td><td>Yes (API mode)</td><td>groq, openai, anthropic, azure_openai, bedrock, ollama, custom</td></tr>
     <tr><td><code>LLM_API_KEY</code></td><td>Yes*</td><td>Provider API key (*not needed for Ollama/Bedrock)</td></tr>
-    <tr><td><code>LLM_MODEL</code></td><td>No</td><td>Override default model for your provider</td></tr>
+    <tr><td><code>LLM_MODEL</code></td><td>No</td><td>Override default model</td></tr>
     <tr><td><code>LLM_BASE_URL</code></td><td>No</td><td>Custom endpoint (custom provider only)</td></tr>
-    <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Azure</td><td>Azure resource endpoint</td></tr>
+    <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Azure only</td><td>Azure resource endpoint</td></tr>
     <tr><td><code>AZURE_OPENAI_API_VERSION</code></td><td>No</td><td>API version (default: 2024-12-01-preview)</td></tr>
-    <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>No</td><td>Azure deployment name</td></tr>
+    <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>No</td><td>Deployment name</td></tr>
+    <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td>No</td><td>AWS access key (Bedrock)</td></tr>
+    <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td>No</td><td>AWS secret key (Bedrock)</td></tr>
     <tr><td><code>AWS_REGION</code></td><td>No</td><td>AWS region (default: us-east-1)</td></tr>
     <tr><td><code>DIGIKEY_CLIENT_ID</code></td><td>No</td><td>DigiKey OAuth2 client ID</td></tr>
     <tr><td><code>DIGIKEY_CLIENT_SECRET</code></td><td>No</td><td>DigiKey OAuth2 secret</td></tr>
@@ -280,11 +365,11 @@ venv\Scripts\activate        # Windows
     <tr><td><code>GROQ_API_KEY</code></td><td>No</td><td>Legacy fallback (still works)</td></tr>
   </table>
 
-  <h2 id="running">7. Running the Agent</h2>
+  <h2 id="running">Running the Agent</h2>
 
   <h3>Option A: Streamlit Web UI</h3>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>streamlit run app.py</pre>
-  <p>Open <code>http://localhost:8501</code>. Configure provider in sidebar, select input file, click Run.</p>
+  <p>Open <a href="http://localhost:8501" target="_blank">http://localhost:8501</a>. Configure provider in sidebar, select input file, click Run.</p>
 
   <h3>Option B: API Key CLI</h3>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python main.py
@@ -294,67 +379,66 @@ python main.py --clear-cache     # delete cache before run</pre>
 
   <h3>Option C: Claude Code CLI (zero API keys)</h3>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python main_cc.py                # 4 parallel workers
-python main_cc.py --workers 8   # 8 workers (faster)
+python main_cc.py --workers 8    # 8 workers (faster)
 python main_cc.py --fresh        # ignore previous progress
-python main_cc.py --workers 1   # sequential (debugging)</pre>
-  <p>Requires <code>claude</code> CLI installed and on PATH. No <code>.env</code> needed.</p>
+python main_cc.py --workers 1    # sequential mode (debugging)</pre>
 
-  <h2 id="output">8. Output</h2>
+  <h2 id="output">Output</h2>
 
   <p>Output files appear in <code>output/</code>, one per part class:</p>
+
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>output/
   Flat Washer.xlsx
   Split Lock Washer.xlsx
+  Internal Tooth Lock Washer.xlsx
   Deep Groove Ball Bearing.xlsx
   Tube Fitting.xlsx</pre>
-  <p>Each file contains: original input columns + Part Class + Source URL + extracted attributes with canonical column names.</p>
 
-  <h2 id="cache">9. Cache Management</h2>
+  <p>Each file contains: original input columns + Part Class + TC Class ID + Source URL + extracted attributes with canonical column names (schema-ordered).</p>
 
-  <table>
-    <tr><th>Cache</th><th>File</th><th>TTL</th><th>Notes</th></tr>
-    <tr><td>URL cache</td><td><code>url_cache.json</code></td><td>30 days</td><td>Shared across modes, safe to commit</td></tr>
-    <tr><td>LLM classify</td><td><code>llm_cache.json</code></td><td>90 days</td><td>Thread-safe, atomic writes</td></tr>
-    <tr><td>LLM extract</td><td><code>llm_cache.json</code></td><td>30 days</td><td>Keyed on part + class + content</td></tr>
-    <tr><td>Metrics</td><td><code>metrics_history.json</code></td><td>--</td><td>Appended after each run</td></tr>
-  </table>
+  <h2 id="caches">Cache Management</h2>
 
-  <p>CLI flags: <code>--no-cache</code> to bypass, <code>--clear-cache</code> to delete before run.</p>
+  <h3>URL Cache (<code>url_cache.json</code>)</h3>
+  <ul>
+    <li>Maps manufacturer part numbers to best source URLs</li>
+    <li>30-day TTL with automatic expiration</li>
+    <li>Bad-entry eviction: removes URLs that returned no useful content</li>
+    <li>Shared across all execution modes</li>
+    <li>Coverage improves with each run as cache warms</li>
+    <li>Safe to commit (public URLs only)</li>
+  </ul>
 
-  <h2 id="new-classes">10. Adding New Part Classes</h2>
+  <h3>LLM Cache (<code>llm_cache.json</code>)</h3>
+  <ul>
+    <li>Classification cache: 90-day TTL (keyed on normalized input MD5)</li>
+    <li>Extraction cache: 30-day TTL (keyed on mfg_part_num + class + content hash)</li>
+    <li>Thread-safe with atomic writes (Windows-safe via tempfile + os.replace)</li>
+    <li>Use <code>--no-cache</code> to bypass, <code>--clear-cache</code> to delete</li>
+  </ul>
 
-  <p>Edit <code>src/attr_schema.py</code>:</p>
+  <h3>Metrics History (<code>metrics_history.json</code>)</h3>
+  <ul>
+    <li>Appended after each run</li>
+    <li>Tracks quality, cache effectiveness, regex/LLM agreement, timing</li>
+    <li>Use for trend analysis across multiple runs</li>
+  </ul>
 
-  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button># 1. Add to KNOWN_CLASSES (if not already there):
-KNOWN_CLASSES = [
-    ...
-    "My New Class",
-]
-
-# 2. Add canonical attribute schema:
-CLASS_SCHEMAS["My New Class"] = [
-    "Attribute 1", "Attribute 2", "Material", "Finish",
-]
-
-# 3. Add alias variants:
-ALIASES["alt name for attr 1"] = "Attribute 1"</pre>
-
-  <p>Optionally add abbreviation aliases to <code>CLASS_ALIASES</code> in <code>src/class_extractor.py</code> for deterministic classification.</p>
-
-  <h2 id="optimization">11. Optimization Features</h2>
+  <h2 id="optimization">Pipeline Optimization Features</h2>
 
   <table>
-    <tr><th>Feature</th><th>Description</th><th>Savings</th></tr>
-    <tr><td>Batch classification</td><td>50 parts per LLM call</td><td>~95% fewer tokens</td></tr>
-    <tr><td>Deterministic classification</td><td>Pattern matching from web content</td><td>100% for matched</td></tr>
-    <tr><td>Regex pre-extraction</td><td>Tables + patterns before LLM</td><td>Smaller prompts</td></tr>
-    <tr><td>LLM response cache</td><td>90-day classify / 30-day extract</td><td>100% for cached</td></tr>
-    <tr><td>URL cache</td><td>30-day TTL, shared across modes</td><td>Skips search</td></tr>
-    <tr><td>Manufacturer rotation</td><td>Round-robin by manufacturer</td><td>Reduces bot detection</td></tr>
-    <tr><td>Distributor APIs</td><td>Structured data, bypasses LLM</td><td>100% for API-matched</td></tr>
+    <tr><th>Feature</th><th>Description</th><th>Impact</th></tr>
+    <tr><td>Batch classification</td><td>100 parts per CLI call (CC), 50 per API call</td><td>75x faster than individual</td></tr>
+    <tr><td>Deterministic classification</td><td>Pattern matching from web content, 95% accuracy</td><td>100% token savings for matched</td></tr>
+    <tr><td>Regex pre-extraction</td><td>Tables + key-value patterns before LLM</td><td>Smaller extraction prompts</td></tr>
+    <tr><td>Hybrid extraction prompt</td><td>Priority schema hints + maximize coverage</td><td>Higher attribute yield</td></tr>
+    <tr><td>LLM response cache</td><td>90-day classify / 30-day extract TTL</td><td>100% for cached parts</td></tr>
+    <tr><td>URL cache</td><td>30-day TTL + bad-entry eviction</td><td>Skips search entirely</td></tr>
+    <tr><td>Content cleaner</td><td>HTML table extraction + smart truncation (3K/5K/8K)</td><td>Better spec-to-noise ratio</td></tr>
+    <tr><td>Manufacturer rotation</td><td>Round-robin interleave by manufacturer</td><td>Reduces bot detection</td></tr>
+    <tr><td>Distributor APIs</td><td>DigiKey OAuth2, Mouser API, McMaster mTLS</td><td>100% for API-matched</td></tr>
   </table>
 
-  <h2 id="deployment">12. Deployment</h2>
+  <h2 id="deploy">Deployment</h2>
 
   <h3>Local Development</h3>
   <p>No special deployment needed. Run directly with Python.</p>
@@ -365,45 +449,50 @@ ALIASES["alt name for attr 1"] = "Attribute 1"</pre>
     <li>Ensure <code>claude</code> CLI is configured for your enterprise backend (Azure, etc.)</li>
     <li>Progress auto-saves; safe to interrupt and resume</li>
     <li>Output files written every 50 parts (main_cc.py) or 10 parts (main.py)</li>
+    <li>URL cache warms over multiple runs for improving coverage</li>
   </ul>
 
   <h3>Docker (optional)</h3>
-  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button># No Dockerfile included yet. For containerization:
-# Base image: python:3.11-slim
-# Install requirements + optional cloakbrowser
-# Mount input/ and output/ volumes</pre>
+  <p>No Dockerfile included yet. For containerization:</p>
+  <ul>
+    <li>Base image: <code>python:3.11-slim</code></li>
+    <li>Install requirements + optional cloakbrowser</li>
+    <li>Mount <code>input/</code> and <code>output/</code> volumes</li>
+  </ul>
 
   <h2 id="checklist">Setup Checklist</h2>
 
-  <p>Track your setup progress. State is saved in your browser (localStorage).</p>
+  <p>Click items to mark complete. Progress is saved in your browser.</p>
 
   <div class="check-section">Initial Setup</div>
   <ul class="checklist" id="checklist">
-    <li data-key="python" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Python 3.11+ installed</div></li>
-    <li data-key="clone" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Repository cloned</div></li>
-    <li data-key="venv" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Virtual environment created and activated</div></li>
-    <li data-key="deps" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">pip install -r requirements.txt completed</div></li>
-    <li data-key="envfile" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">.env file created from .env.example</div></li>
-    <li data-key="llm" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">LLM provider and API key configured</div></li>
+    <li onclick="toggleCheck(this)" data-key="py"><div class="check-box"></div><div class="check-text">Python 3.11+ installed</div></li>
+    <li onclick="toggleCheck(this)" data-key="clone"><div class="check-box"></div><div class="check-text">Repository cloned</div></li>
+    <li onclick="toggleCheck(this)" data-key="venv"><div class="check-box"></div><div class="check-text">Virtual environment created and activated</div></li>
+    <li onclick="toggleCheck(this)" data-key="pip"><div class="check-box"></div><div class="check-text"><code>pip install -r requirements.txt</code> completed</div></li>
+    <li onclick="toggleCheck(this)" data-key="env"><div class="check-box"></div><div class="check-text"><code>.env</code> file created from <code>.env.example</code></div></li>
+    <li onclick="toggleCheck(this)" data-key="llm"><div class="check-box"></div><div class="check-text">LLM provider and API key configured</div></li>
   </ul>
 
   <div class="check-section">Optional Enhancements</div>
   <ul class="checklist">
-    <li data-key="digikey" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">DigiKey API configured</div></li>
-    <li data-key="mouser" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Mouser API configured</div></li>
-    <li data-key="mcmaster" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">McMaster API configured</div></li>
-    <li data-key="cloak" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">CloakBrowser installed (pip install cloakbrowser)</div></li>
-    <li data-key="azure" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Azure OpenAI configured (enterprise)</div></li>
-    <li data-key="bedrock" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">AWS Bedrock configured (enterprise)</div></li>
+    <li onclick="toggleCheck(this)" data-key="digikey"><div class="check-box"></div><div class="check-text">DigiKey API configured (OAuth2)</div></li>
+    <li onclick="toggleCheck(this)" data-key="mouser"><div class="check-box"></div><div class="check-text">Mouser API configured</div></li>
+    <li onclick="toggleCheck(this)" data-key="mcmaster"><div class="check-box"></div><div class="check-text">McMaster API configured (mTLS)</div></li>
+    <li onclick="toggleCheck(this)" data-key="cloak"><div class="check-box"></div><div class="check-text">CloakBrowser installed (<code>pip install cloakbrowser</code>)</div></li>
+    <li onclick="toggleCheck(this)" data-key="azure"><div class="check-box"></div><div class="check-text">Azure OpenAI configured (enterprise)</div></li>
+    <li onclick="toggleCheck(this)" data-key="bedrock"><div class="check-box"></div><div class="check-text">AWS Bedrock configured (enterprise)</div></li>
+    <li onclick="toggleCheck(this)" data-key="schema"><div class="check-box"></div><div class="check-text">Classification schema Excel customized</div></li>
   </ul>
 
   <div class="check-section">First Run</div>
   <ul class="checklist">
-    <li data-key="input" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Input Excel placed in input/ folder</div></li>
-    <li data-key="ran" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Ran classification (any mode)</div></li>
-    <li data-key="output" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Verified output files in output/</div></li>
-    <li data-key="accuracy" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Checked attribute accuracy</div></li>
-    <li data-key="metrics" onclick="toggleCheck(this)"><div class="check-box"></div><div class="check-text">Reviewed metrics summary</div></li>
+    <li onclick="toggleCheck(this)" data-key="input"><div class="check-box"></div><div class="check-text">Input Excel placed in <code>input/</code> folder</div></li>
+    <li onclick="toggleCheck(this)" data-key="ran"><div class="check-box"></div><div class="check-text">Ran classification (any mode)</div></li>
+    <li onclick="toggleCheck(this)" data-key="output"><div class="check-box"></div><div class="check-text">Verified output files in <code>output/</code></div></li>
+    <li onclick="toggleCheck(this)" data-key="tcid"><div class="check-box"></div><div class="check-text">Checked TC Class ID column in output</div></li>
+    <li onclick="toggleCheck(this)" data-key="attrs"><div class="check-box"></div><div class="check-text">Checked attribute accuracy</div></li>
+    <li onclick="toggleCheck(this)" data-key="metrics"><div class="check-box"></div><div class="check-text">Reviewed metrics summary</div></li>
   </ul>
 
   <button class="reset-btn" onclick="resetChecklist()">Reset Checklist</button>
@@ -411,52 +500,6 @@ ALIASES["alt name for attr 1"] = "Attribute 1"</pre>
 </main>
 
 <script>
-const STORAGE_KEY = 'partclassifier-setup-checklist';
-
-function loadChecklist(){
-  try{
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  }catch(e){return {}}
-}
-
-function saveChecklist(state){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function toggleCheck(li){
-  const key=li.dataset.key;
-  const state=loadChecklist();
-  if(state[key]){delete state[key];li.classList.remove('checked')}
-  else{state[key]=true;li.classList.add('checked')}
-  saveChecklist(state);
-  updateProgress();
-}
-
-function resetChecklist(){
-  localStorage.removeItem(STORAGE_KEY);
-  document.querySelectorAll('.checklist li').forEach(li=>li.classList.remove('checked'));
-  updateProgress();
-}
-
-function updateProgress(){
-  const state=loadChecklist();
-  const items=document.querySelectorAll('.checklist li[data-key]');
-  const total=items.length;
-  const done=Object.keys(state).length;
-  const pct=total?Math.round(100*done/total):0;
-  document.getElementById('progress-pct').textContent=pct+'%';
-  document.getElementById('progress-fill').style.width=pct+'%';
-}
-
-// Init
-(function(){
-  const state=loadChecklist();
-  document.querySelectorAll('.checklist li[data-key]').forEach(li=>{
-    if(state[li.dataset.key]) li.classList.add('checked');
-  });
-  updateProgress();
-})();
-
 function copyCode(btn){
   const pre=btn.parentElement;
   const code=pre.textContent.replace('Copy','').trim();
@@ -471,6 +514,42 @@ function toggleCollapsible(header){
   header.nextElementSibling.classList.toggle('open');
 }
 
+// Checklist with localStorage
+function getChecked(){
+  try{return JSON.parse(localStorage.getItem('pc-checklist')||'{}')}catch(e){return{}}
+}
+function saveChecked(data){
+  localStorage.setItem('pc-checklist',JSON.stringify(data));
+}
+function toggleCheck(li){
+  li.classList.toggle('checked');
+  const data=getChecked();
+  data[li.dataset.key]=li.classList.contains('checked');
+  saveChecked(data);
+  updateProgress();
+}
+function resetChecklist(){
+  localStorage.removeItem('pc-checklist');
+  document.querySelectorAll('.checklist li').forEach(li=>li.classList.remove('checked'));
+  updateProgress();
+}
+function loadChecklist(){
+  const data=getChecked();
+  document.querySelectorAll('.checklist li').forEach(li=>{
+    if(data[li.dataset.key]) li.classList.add('checked');
+  });
+  updateProgress();
+}
+function updateProgress(){
+  const all=document.querySelectorAll('.checklist li');
+  const done=document.querySelectorAll('.checklist li.checked');
+  const pct=all.length?Math.round(done.length/all.length*100):0;
+  document.getElementById('progress-pct').textContent=pct+'%';
+  document.getElementById('progress-fill').style.width=pct+'%';
+}
+loadChecklist();
+
+// Scroll spy
 const navLinks=document.querySelectorAll('.sidebar nav a[href^="#"]');
 const sections=[];
 navLinks.forEach(link=>{

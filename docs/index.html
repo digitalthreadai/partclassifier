@@ -35,7 +35,7 @@ a:hover{color:var(--accent2)}
 .card .link{font-weight:600;font-size:.9rem;display:inline-flex;align-items:center;gap:6px}
 .card .link::after{content:'\2192';transition:transform .2s}
 .card:hover .link::after{transform:translateX(4px)}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-top:50px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-top:50px}
 .stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;text-align:center}
 .stat .num{font-size:2rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .stat .label{color:var(--muted);font-size:.85rem;margin-top:4px}
@@ -46,6 +46,13 @@ a:hover{color:var(--accent2)}
 .tech-item .dot.purple{background:var(--accent)}
 .section-title{font-size:1.6rem;font-weight:700;margin-top:60px;margin-bottom:8px;color:var(--text)}
 .section-sub{color:var(--muted);margin-bottom:24px;font-size:.95rem}
+.benchmark{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:30px}
+.bench-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;position:relative;overflow:hidden}
+.bench-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.bench-card h4{color:var(--accent);font-size:.95rem;margin-bottom:12px}
+.bench-card .metric{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.88rem}
+.bench-card .metric:last-child{border-bottom:none}
+.bench-card .metric .val{color:var(--accent2);font-weight:600;font-family:'JetBrains Mono',monospace}
 footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);width:100%;max-width:1100px;margin-top:60px}
 @media(max-width:600px){.hero h1{font-size:2rem}.cards{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
 </style>
@@ -53,9 +60,9 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
 <body>
 <div class="hub-container">
   <div class="hero">
-    <div class="tag">v1.5 &middot; Python 3.11+</div>
+    <div class="tag">v1.6 &middot; Python 3.11+ &middot; 7,031 LOC</div>
     <h1>PartClassifier</h1>
-    <p>AI-powered mechanical parts classification agent. Reads Excel input, searches distributor APIs and the web, classifies 60+ part types, extracts structured attributes, and writes per-class Excel output for Teamcenter PLM import.</p>
+    <p>Production-grade AI agent for mechanical part classification. Reads Excel input, searches distributor APIs and the web, classifies 81 part types with 95% accuracy, extracts structured attributes via regex + LLM hybrid pipeline, and writes per-class Excel output with TC Class ID for Teamcenter PLM import.</p>
     <div class="hero-links">
       <a href="https://github.com/digitalthreadai/partclassifier" class="primary" target="_blank">GitHub Repository</a>
       <a href="README.html" class="secondary">Project Overview</a>
@@ -66,19 +73,19 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
     <div class="card">
       <div class="card-icon">&#128214;</div>
       <h3>Project Overview</h3>
-      <p>Quick start, pipeline walkthrough, LLM provider configuration, output format, and supported part classes.</p>
+      <p>Quick start, 6-step pipeline walkthrough, 8 LLM provider configurations, benchmark results, output format, and 81 supported part classes.</p>
       <a href="README.html" class="link">Read Overview</a>
     </div>
     <div class="card">
       <div class="card-icon">&#127919;</div>
       <h3>Strategy &amp; Features</h3>
-      <p>Architecture, feature map, competitive landscape, tech stack, LLM providers, and development roadmap.</p>
+      <p>Architecture diagram, 20-feature map, competitive landscape, Excel-based schema, tech stack, LLM providers, and development roadmap.</p>
       <a href="COO.html" class="link">Strategy Dashboard</a>
     </div>
     <div class="card">
       <div class="card-icon">&#9881;</div>
       <h3>Setup Guide</h3>
-      <p>Step-by-step configuration: Python environment, 7 LLM providers, distributor APIs, stealth browser, and deployment.</p>
+      <p>Step-by-step configuration: Python environment, 8 LLM providers, 3 distributor APIs, stealth browser, classification schema, and deployment.</p>
       <a href="SITECONFIGURATIONS.html" class="link">Setup Guide</a>
     </div>
   </div>
@@ -86,12 +93,31 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
   <h2 class="section-title">At a Glance</h2>
   <p class="section-sub">Key metrics and capabilities of the PartClassifier pipeline.</p>
   <div class="stats">
-    <div class="stat"><div class="num">60+</div><div class="label">Part Classes</div></div>
-    <div class="stat"><div class="num">7</div><div class="label">LLM Providers</div></div>
+    <div class="stat"><div class="num">81</div><div class="label">Part Classes</div></div>
+    <div class="stat"><div class="num">8</div><div class="label">LLM Providers</div></div>
     <div class="stat"><div class="num">3</div><div class="label">Distributor APIs</div></div>
     <div class="stat"><div class="num">500+</div><div class="label">Attribute Aliases</div></div>
+    <div class="stat"><div class="num">17</div><div class="label">Source Modules</div></div>
+    <div class="stat"><div class="num">95%</div><div class="label">Classification Accuracy</div></div>
     <div class="stat"><div class="num">3</div><div class="label">Execution Modes</div></div>
-    <div class="stat"><div class="num">15</div><div class="label">Source Modules</div></div>
+    <div class="stat"><div class="num">7,031</div><div class="label">Lines of Code</div></div>
+  </div>
+
+  <h2 class="section-title">Benchmark Results</h2>
+  <p class="section-sub">Tested on 44 mechanical parts. Coverage improves with each run due to URL cache warming.</p>
+  <div class="benchmark">
+    <div class="bench-card">
+      <h4>Groq V8</h4>
+      <div class="metric"><span>Coverage</span><span class="val">86%</span></div>
+      <div class="metric"><span>Avg Attrs/Part</span><span class="val">14.1</span></div>
+      <div class="metric"><span>Improvement</span><span class="val">5x over baseline</span></div>
+    </div>
+    <div class="bench-card">
+      <h4>Opus V8c (warm cache)</h4>
+      <div class="metric"><span>Coverage</span><span class="val">93%</span></div>
+      <div class="metric"><span>Avg Attrs/Part</span><span class="val">5.7</span></div>
+      <div class="metric"><span>Improvement</span><span class="val">39% over cold start</span></div>
+    </div>
   </div>
 
   <h2 class="section-title">Tech Stack</h2>
@@ -110,31 +136,31 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
   </div>
 
   <h2 class="section-title">Pipeline Steps</h2>
-  <p class="section-sub">Six-step pipeline from Excel input to classified output.</p>
+  <p class="section-sub">Six-step pipeline from Excel input to classified output with TC Class ID.</p>
   <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
     <div class="card" style="padding:20px 24px">
-      <h3 style="font-size:1rem;color:var(--accent)">1. Read Input</h3>
-      <p style="font-size:.85rem;margin-bottom:0">Excel with Part Number, Mfg Part Number, Mfg Name, Unit of Measure</p>
+      <h3 style="font-size:1rem;color:var(--accent)">1. Multi-Tier Search</h3>
+      <p style="font-size:.85rem;margin-bottom:0">7-tier: APIs (DigiKey/Mouser/McMaster) &rarr; Stealth Browser &rarr; URL Cache &rarr; DuckDuckGo &rarr; Fallback</p>
     </div>
     <div class="card" style="padding:20px 24px">
-      <h3 style="font-size:1rem;color:var(--accent)">2. Multi-Tier Search</h3>
-      <p style="font-size:.85rem;margin-bottom:0">APIs, stealth browser, URL cache, DuckDuckGo, fallback chain</p>
+      <h3 style="font-size:1rem;color:var(--accent)">2. Classify</h3>
+      <p style="font-size:.85rem;margin-bottom:0">Deterministic from web content (95% accuracy) &rarr; LLM cache &rarr; Batch LLM (100/call)</p>
     </div>
     <div class="card" style="padding:20px 24px">
-      <h3 style="font-size:1rem;color:var(--accent)">3. Classify</h3>
-      <p style="font-size:.85rem;margin-bottom:0">Deterministic from content, LLM cache, or LLM call (60+ classes)</p>
+      <h3 style="font-size:1rem;color:var(--accent)">3. Regex Pre-Extract</h3>
+      <p style="font-size:.85rem;margin-bottom:0">Tables, key-value patterns, standards (DIN/ASME/ISO), materials via regex</p>
     </div>
     <div class="card" style="padding:20px 24px">
-      <h3 style="font-size:1rem;color:var(--accent)">4. Regex Pre-Extract</h3>
-      <p style="font-size:.85rem;margin-bottom:0">Tables, key-value patterns, standards, materials via regex</p>
+      <h3 style="font-size:1rem;color:var(--accent)">4. LLM Validate</h3>
+      <p style="font-size:.85rem;margin-bottom:0">Hybrid prompt: priority schema hints + maximize coverage, temperature=0</p>
     </div>
     <div class="card" style="padding:20px 24px">
-      <h3 style="font-size:1rem;color:var(--accent)">5. LLM Validate</h3>
-      <p style="font-size:.85rem;margin-bottom:0">Validates regex, fills gaps, temperature=0 deterministic</p>
+      <h3 style="font-size:1rem;color:var(--accent)">5. Normalize</h3>
+      <p style="font-size:.85rem;margin-bottom:0">500+ alias mappings &rarr; canonical names, schema-ordered per class</p>
     </div>
     <div class="card" style="padding:20px 24px">
       <h3 style="font-size:1rem;color:var(--accent)">6. Write Output</h3>
-      <p style="font-size:.85rem;margin-bottom:0">Per-class Excel with canonical column names, styled headers</p>
+      <p style="font-size:.85rem;margin-bottom:0">Per-class Excel with TC Class ID, styled headers, auto-sized columns</p>
     </div>
   </div>
 

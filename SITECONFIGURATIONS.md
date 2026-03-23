@@ -34,7 +34,7 @@ CloakBrowser is optional and installed separately (see Section 4).
 
 ---
 
-## 2. LLM Provider Configuration
+## 2. LLM Provider Configuration (8 Providers)
 
 Copy the example env file and edit:
 
@@ -94,6 +94,12 @@ AWS_REGION=us-east-1
 
 No API key needed -- uses default AWS credential chain (env vars, `~/.aws/credentials`, IAM role).
 
+Optional explicit credentials:
+```env
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+```
+
 ### Ollama (local, free)
 
 ```env
@@ -113,13 +119,24 @@ LLM_BASE_URL=https://your-api-endpoint.com/v1
 LLM_MODEL=your-model-name
 ```
 
+### Claude Code CLI (zero API keys)
+
+No `.env` configuration required. Uses the `claude` CLI installed on PATH.
+
+```bash
+python main_cc.py                # 4 parallel workers
+python main_cc.py --workers 8    # 8 workers (faster)
+```
+
+Works with any backend configured in Claude Code: Anthropic, Azure, AWS Bedrock, etc.
+
 ---
 
 ## 3. Distributor API Keys (all optional)
 
 Higher-quality structured data. When an API returns 3+ attributes, LLM extraction is skipped entirely.
 
-### DigiKey (free)
+### DigiKey (free, OAuth2)
 
 Register at [developer.digikey.com](https://developer.digikey.com):
 
@@ -130,7 +147,7 @@ DIGIKEY_CLIENT_SECRET=your_client_secret
 
 OAuth2 tokens are auto-cached and refreshed.
 
-### Mouser (free)
+### Mouser (free, API key)
 
 Register at [api.mouser.com](https://api.mouser.com):
 
@@ -140,7 +157,7 @@ MOUSER_API_KEY=your_api_key
 
 Rate limited: 30 req/min (auto-throttled).
 
-### McMaster-Carr (by request)
+### McMaster-Carr (by request, mTLS)
 
 Email `eprocurement@mcmaster.com` for mTLS access:
 
@@ -168,8 +185,8 @@ STEALTH_BROWSER_ENABLED=false
 
 Features:
 - 33 C++ source-level patches to Chromium
-- Bypasses Cloudflare, reCAPTCHA v3, FingerprintJS, Turnstile
-- Fresh browser context per scrape
+- Bypasses Cloudflare, reCAPTCHA v3 (0.9 score), FingerprintJS, Turnstile
+- Fresh browser context per scrape (no session fingerprinting)
 - Direct URL patterns for McMaster-Carr, Fastenal, Grainger
 
 ---
@@ -190,6 +207,17 @@ Required columns (exact names):
 
 A sample file with 4 parts is included in the repo.
 
+### Classification Schema (Excel-based)
+
+The file `input/ClassificationSchema.xlsx` defines 81 part classes, 46 canonical attributes, and 169 alias mappings. This schema drives:
+
+- Which attributes are extracted per class
+- Column ordering in output Excel files
+- Alias normalization (e.g., "Thread Pitch" -> "Pitch")
+- TC Class ID mapping for Teamcenter integration
+
+If `ClassificationSchema.xlsx` is missing, the system falls back to hardcoded schemas in `src/attr_schema.py`.
+
 ---
 
 ## 6. Environment Variables Reference
@@ -203,6 +231,8 @@ A sample file with 4 parts is included in the repo.
 | `AZURE_OPENAI_ENDPOINT` | Azure only | Azure resource endpoint | portal.azure.com |
 | `AZURE_OPENAI_API_VERSION` | No | API version (default: 2024-12-01-preview) | Azure docs |
 | `AZURE_OPENAI_DEPLOYMENT` | No | Deployment name | Azure portal |
+| `AWS_ACCESS_KEY_ID` | No | AWS access key (Bedrock) | AWS console |
+| `AWS_SECRET_ACCESS_KEY` | No | AWS secret key (Bedrock) | AWS console |
 | `AWS_REGION` | No | AWS region (default: us-east-1) | AWS console |
 | `DIGIKEY_CLIENT_ID` | No | DigiKey OAuth2 client ID | developer.digikey.com |
 | `DIGIKEY_CLIENT_SECRET` | No | DigiKey OAuth2 secret | developer.digikey.com |
@@ -240,9 +270,9 @@ Requires `.env` configured. Processes all parts sequentially with resume capabil
 
 ```bash
 python main_cc.py                # 4 parallel workers
-python main_cc.py --workers 8   # 8 workers (faster)
+python main_cc.py --workers 8    # 8 workers (faster)
 python main_cc.py --fresh        # ignore previous progress
-python main_cc.py --workers 1   # sequential mode (for debugging)
+python main_cc.py --workers 1    # sequential mode (for debugging)
 ```
 
 Requires `claude` CLI installed and on PATH. No `.env` needed.
@@ -262,7 +292,7 @@ output/
   Tube Fitting.xlsx
 ```
 
-Each file contains: original input columns + Part Class + Source URL + extracted attributes with canonical column names.
+Each file contains: original input columns + Part Class + TC Class ID + Source URL + extracted attributes with canonical column names (schema-ordered).
 
 ---
 
@@ -271,46 +301,47 @@ Each file contains: original input columns + Part Class + Source URL + extracted
 ### URL Cache (`url_cache.json`)
 - Maps manufacturer part numbers to best source URLs
 - 30-day TTL with automatic expiration
+- Bad-entry eviction: removes URLs that returned no useful content
 - Shared across all execution modes
+- Coverage improves with each run as cache warms
 - Safe to commit (public URLs only)
 
 ### LLM Cache (`llm_cache.json`)
 - Classification cache: 90-day TTL
 - Extraction cache: 30-day TTL
-- Thread-safe with atomic writes
+- Thread-safe with atomic writes (Windows-safe via tempfile + os.replace)
 - Use `--no-cache` to bypass, `--clear-cache` to delete
 
 ### Metrics History (`metrics_history.json`)
 - Appended after each run
 - Tracks quality, cache effectiveness, regex/LLM agreement, timing
+- Use for trend analysis across multiple runs
 
 ---
 
-## 10. Adding New Part Classes
+## 10. Classification Schema
 
-Edit `src/attr_schema.py`:
+### Excel-Based Schema (`input/ClassificationSchema.xlsx`)
 
-1. The class name is likely already in `KNOWN_CLASSES` (60+ classes defined). If not, add it:
-```python
-KNOWN_CLASSES = [
-    ...
-    "My New Class",
-]
-```
+The primary schema source with 81 part classes, 46 canonical attributes, and 169 aliases. Columns:
 
-2. Add canonical attribute list to `CLASS_SCHEMAS`:
-```python
-"My New Class": [
-    "Attribute 1", "Attribute 2", "Material", "Finish",
-],
-```
+- **Class Name**: Canonical part class name
+- **TC Class ID**: Teamcenter classification ID
+- **Attributes**: Ordered list of canonical attribute names per class
+- **Aliases**: Mapping from alternative names to canonical names
 
-3. Add any alias variants to `ALIASES`:
-```python
-"alt name for attr 1": "Attribute 1",
-```
+### Adding a New Part Class
 
-4. Optionally add abbreviation aliases to `CLASS_ALIASES` in `src/class_extractor.py` for deterministic classification:
+1. Add to `input/ClassificationSchema.xlsx` (preferred):
+   - Add a new row with class name, TC Class ID, and attributes
+   - Add alias mappings as needed
+
+2. Or edit `src/attr_schema.py` (fallback):
+   - Add class name to `KNOWN_CLASSES`
+   - Add canonical attribute list to `CLASS_SCHEMAS`
+   - Add alias variants to `ALIASES`
+
+3. Optionally add abbreviation aliases to `CLASS_ALIASES` in `src/class_extractor.py` for deterministic classification:
 ```python
 "my alias": "My New Class",
 ```
@@ -320,16 +351,19 @@ KNOWN_CLASSES = [
 ## 11. Pipeline Optimization Features
 
 ### Batch Classification
-In `main.py`, the `PartClassifier.classify_batch()` method classifies up to 50 parts per LLM call instead of 1, achieving 95% token savings. Parts that fail batch parsing fall back to individual classification.
+In `main.py`, the `PartClassifier.classify_batch()` method classifies up to 50 parts per LLM call. In `main_cc.py`, batch size is 100 parts per CLI call (75x faster than individual calls). Parts that fail batch parsing fall back to individual classification.
 
 ### Regex Pre-Extraction
-Before each LLM extraction call, `regex_extractor.py` attempts pattern-based extraction. Pre-extracted values are sent to the LLM for validation and gap-filling, reducing the LLM's workload and improving accuracy.
+Before each LLM extraction call, `regex_extractor.py` attempts pattern-based extraction. Pre-extracted values are sent to the LLM for validation and gap-filling via the hybrid prompt (priority schema hints + maximize coverage), reducing the LLM's workload and improving accuracy.
 
 ### Deterministic Classification
-`class_extractor.py` attempts to classify parts from web content alone (breadcrumbs, labels, titles, URLs). Only when this fails does the pipeline make an LLM call, saving tokens on parts with clear category signals.
+`class_extractor.py` attempts to classify parts from web content alone (breadcrumbs, labels, titles, URLs) with 95% accuracy. Only when this fails does the pipeline make an LLM call, saving tokens on parts with clear category signals.
 
 ### Manufacturer Rotation
 `shared.py:rotate_manufacturers()` reorders parts so requests to the same manufacturer are spread apart, reducing the risk of bot detection and rate limiting.
+
+### Content Cleaning
+`content_cleaner.py` extracts structured data from HTML tables and applies smart truncation (3K tables / 5K text / 8K combined) to ensure specs are prioritized over navigation boilerplate.
 
 ---
 
@@ -343,6 +377,7 @@ No special deployment needed. Run directly with Python.
 - Ensure `claude` CLI is configured for your enterprise backend (Azure, etc.)
 - Progress auto-saves; safe to interrupt and resume
 - Output files written every 50 parts (main_cc.py) or 10 parts (main.py)
+- URL cache warms over multiple runs for improving coverage
 
 ### Docker (optional)
 No Dockerfile is included yet. For containerization:
@@ -363,16 +398,18 @@ No Dockerfile is included yet. For containerization:
 - [ ] LLM provider and API key configured
 
 ### Optional Enhancements
-- [ ] DigiKey API configured
+- [ ] DigiKey API configured (OAuth2)
 - [ ] Mouser API configured
-- [ ] McMaster API configured
+- [ ] McMaster API configured (mTLS)
 - [ ] CloakBrowser installed (`pip install cloakbrowser`)
 - [ ] Azure OpenAI configured (enterprise)
 - [ ] AWS Bedrock configured (enterprise)
+- [ ] Classification schema Excel customized
 
 ### First Run
 - [ ] Input Excel placed in `input/` folder
 - [ ] Ran classification (any mode)
 - [ ] Verified output files in `output/`
+- [ ] Checked TC Class ID column in output
 - [ ] Checked attribute accuracy
 - [ ] Reviewed metrics summary
