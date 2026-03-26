@@ -269,6 +269,7 @@ def _build_queries(mfg_name: str, mfg_part_num: str, unit: str = "") -> list[str
     queries += [
         f"{mfg_part_num} specifications {unit_hint}".strip(),
         f'"{mfg_part_num}" dimensions datasheet',
+        f"{mfg_name} {mfg_part_num} datasheet",  # electronic components often indexed as datasheets
     ]
     return queries
 
@@ -298,6 +299,19 @@ PREFERRED_DOMAINS = {
     "digikey.com",
     "mouser.com",
     "datasheets.com",
+    # Electronic component distributors
+    "newark.com",
+    "arrow.com",
+    "octopart.com",
+    "findchips.com",
+    "alldatasheet.com",
+    "lcsc.com",
+    "tme.eu",
+    "ttelectronics.com",
+    "bourns.com",
+    "littelfuse.com",
+    "ohmite.com",
+    "vishay.com",
 }
 
 

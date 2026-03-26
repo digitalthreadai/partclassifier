@@ -16,6 +16,18 @@ INPUT_COLUMNS = [
     "Unit of Measure",
 ]
 
+# Fuzzy aliases for input column headers — handles different naming conventions
+COLUMN_ALIASES = {
+    "Part Number": ["PN", "Internal PN", "Item Number", "Item No", "Part No", "Part #"],
+    "Part Name": ["Description", "Part Description", "Name", "Item Name", "Item Description"],
+    "Manufacturer Part Number": ["Mfg Part Number", "MFG PN", "Mfg PN", "MPN",
+                                  "Manufacturer PN", "Mfg Part No", "Mfr Part Number",
+                                  "Mfr PN", "Vendor Part Number", "Vendor PN"],
+    "Manufacturer Name": ["Mfg Name", "MFG Name", "Manufacturer", "Mfg", "Mfr Name",
+                           "Mfr", "Vendor Name", "Vendor", "Supplier", "Supplier Name"],
+    "Unit of Measure": ["UOM", "Unit", "Units", "Measure"],
+}
+
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
@@ -31,12 +43,55 @@ class ExcelHandler:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def read_parts(self) -> list[dict[str, Any]]:
-        """Return list of dicts keyed by INPUT_COLUMNS header names."""
+        """Return list of dicts keyed by INPUT_COLUMNS header names.
+
+        Uses fuzzy column matching: tries exact match, then aliases,
+        then case-insensitive match. Prints matched columns for debugging.
+        """
         wb = openpyxl.load_workbook(self.input_path)
         ws = wb.active
-        # Only read the fixed input columns (ignore any previously written result cols)
-        headers = [cell.value for cell in ws[1]]
-        input_indices = {col: headers.index(col) for col in INPUT_COLUMNS if col in headers}
+        raw_headers = [cell.value for cell in ws[1]]
+        # Strip whitespace from headers
+        headers = [str(h).strip() if h else "" for h in raw_headers]
+        headers_lower = [h.lower() for h in headers]
+
+        input_indices: dict[str, int] = {}
+        for col in INPUT_COLUMNS:
+            # Try exact match first
+            if col in headers:
+                input_indices[col] = headers.index(col)
+                continue
+            # Try aliases
+            matched = False
+            for alias in COLUMN_ALIASES.get(col, []):
+                if alias in headers:
+                    input_indices[col] = headers.index(alias)
+                    print(f"  Column matched: '{alias}' -> '{col}'")
+                    matched = True
+                    break
+            if matched:
+                continue
+            # Try case-insensitive match
+            col_lower = col.lower()
+            for i, h in enumerate(headers_lower):
+                if h == col_lower:
+                    input_indices[col] = i
+                    print(f"  Column matched (case-insensitive): '{headers[i]}' -> '{col}'")
+                    break
+            # Try case-insensitive alias match
+            if col not in input_indices:
+                for alias in COLUMN_ALIASES.get(col, []):
+                    alias_lower = alias.lower()
+                    for i, h in enumerate(headers_lower):
+                        if h == alias_lower:
+                            input_indices[col] = i
+                            print(f"  Column matched (alias): '{headers[i]}' -> '{col}'")
+                            break
+                    if col in input_indices:
+                        break
+
+        if not input_indices:
+            print(f"  WARNING: No matching columns found. Headers: {headers}")
 
         parts = []
         for row in ws.iter_rows(min_row=2, values_only=True):

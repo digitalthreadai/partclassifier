@@ -2,28 +2,43 @@
 Unified LLM client -- supports multiple providers through a single interface.
 
 Providers:
-  - groq         : Groq API (free, fast inference)
-  - openai       : OpenAI API (GPT-4o, GPT-4-turbo, etc.)
-  - anthropic    : Anthropic API (Claude Opus, Sonnet, Haiku)
-  - azure_openai : Azure OpenAI Service (enterprise)
-  - bedrock      : AWS Bedrock (Claude via AWS account)
-  - ollama       : Local Ollama server
-  - custom       : Any OpenAI-compatible API (set LLM_BASE_URL)
+  - groq             : Groq API (free, fast inference)
+  - openai           : OpenAI API (GPT-4o, GPT-4-turbo, etc.)
+  - anthropic        : Anthropic API (Claude Opus, Sonnet, Haiku)
+  - azure_openai     : Azure OpenAI Service (GPT models via Azure)
+  - azure_anthropic  : Azure-hosted Claude (Anthropic models via Azure proxy)
+  - bedrock          : AWS Bedrock native (Claude via Anthropic SDK + AWS credentials)
+  - bedrock_openai   : AWS Bedrock via OpenAI-compatible proxy (enterprise gateways)
+  - ollama           : Local Ollama server
+  - custom           : Any OpenAI-compatible API (set LLM_BASE_URL)
 
-Configuration is read from environment variables (or passed explicitly):
-  LLM_PROVIDER  = groq | openai | anthropic | azure_openai | bedrock | ollama | custom
-  LLM_API_KEY   = your_api_key
-  LLM_MODEL     = model name (optional -- each provider has a sensible default)
-  LLM_BASE_URL  = custom endpoint (only needed for "custom" provider)
+Configuration (environment variables):
+  REQUIRED:
+    LLM_PROVIDER  = provider name (see above)
+    LLM_API_KEY   = API key (not needed for bedrock, ollama)
 
-Azure OpenAI additional env vars:
-  AZURE_OPENAI_ENDPOINT    = https://your-resource.openai.azure.com/
-  AZURE_OPENAI_API_VERSION = 2024-12-01-preview
-  AZURE_OPENAI_DEPLOYMENT  = your-deployment-name
+  OPTIONAL:
+    LLM_MODEL     = model name override (each provider has a sensible default)
+    LLM_BASE_URL  = custom endpoint URL (required for: custom, bedrock_openai, azure_anthropic)
 
-AWS Bedrock additional env vars:
-  AWS_REGION = us-east-1  (or your region)
-  (Uses default AWS credential chain: env vars, ~/.aws/credentials, IAM role, etc.)
+  AZURE OPENAI (LLM_PROVIDER=azure_openai):
+    AZURE_OPENAI_ENDPOINT    = https://your-resource.openai.azure.com/  (REQUIRED)
+    AZURE_OPENAI_API_VERSION = 2024-12-01-preview                       (optional, has default)
+    AZURE_OPENAI_DEPLOYMENT  = your-deployment-name                     (optional)
+
+  AZURE ANTHROPIC (LLM_PROVIDER=azure_anthropic):
+    LLM_BASE_URL  = https://your-proxy.azure.com/v1  (REQUIRED - your Azure proxy endpoint)
+    LLM_API_KEY   = your-azure-api-key                (REQUIRED)
+    LLM_MODEL     = claude-sonnet-4-20250514     (optional, has default)
+
+  AWS BEDROCK NATIVE (LLM_PROVIDER=bedrock):
+    AWS_REGION = us-east-1  (optional, defaults to us-east-1)
+    Uses AWS credential chain: env vars, ~/.aws/credentials, IAM role
+
+  AWS BEDROCK VIA PROXY (LLM_PROVIDER=bedrock_openai):
+    LLM_BASE_URL  = https://your-bedrock-proxy.com/v1  (REQUIRED - OpenAI-compatible proxy)
+    LLM_API_KEY   = your-proxy-api-key                  (REQUIRED)
+    LLM_MODEL     = anthropic.claude-sonnet-4-20250514-v1:0  (optional, has default)
 """
 
 import os
@@ -66,6 +81,15 @@ PROVIDER_PRESETS = {
         "key_hint": "Azure API key or use Azure AD token",
         "key_url": "https://portal.azure.com",
     },
+    "azure_anthropic": {
+        "base_url": None,  # set via LLM_BASE_URL (Azure proxy endpoint)
+        "default_model": "claude-sonnet-4-20250514",
+        "label": "Azure Anthropic",
+        "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-5-20251001"],
+        "needs_key": True,
+        "key_hint": "Azure API key for the Claude proxy",
+        "key_url": "https://portal.azure.com",
+    },
     "bedrock": {
         "base_url": None,
         "default_model": "anthropic.claude-sonnet-4-20250514-v1:0",
@@ -79,6 +103,19 @@ PROVIDER_PRESETS = {
         "key_hint": "Uses AWS credentials (env vars, ~/.aws/credentials, IAM role)",
         "key_url": "https://console.aws.amazon.com/bedrock",
     },
+    "bedrock_openai": {
+        "base_url": None,  # set via LLM_BASE_URL (OpenAI-compatible Bedrock proxy)
+        "default_model": "anthropic.claude-sonnet-4-20250514-v1:0",
+        "label": "AWS Bedrock (proxy)",
+        "models": [
+            "anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic.claude-opus-4-20250514-v1:0",
+            "anthropic.claude-haiku-4-5-20251001-v1:0",
+        ],
+        "needs_key": True,
+        "key_hint": "API key for your Bedrock proxy gateway",
+        "key_url": "https://console.aws.amazon.com/bedrock",
+    },
     "ollama": {
         "base_url": "http://localhost:11434/v1",
         "default_model": "llama3.1",
@@ -90,7 +127,7 @@ PROVIDER_PRESETS = {
     },
 }
 
-SUPPORTED_PROVIDERS = list(PROVIDER_PRESETS.keys()) + ["custom"]
+SUPPORTED_PROVIDERS = sorted(set(list(PROVIDER_PRESETS.keys()) + ["custom"]))
 
 
 class LLMClient:
@@ -131,18 +168,28 @@ class LLMClient:
             self._init_azure_openai()
         elif self.provider == "bedrock":
             self._init_bedrock()
+        elif self.provider in ("bedrock_openai", "azure_anthropic"):
+            # Enterprise proxy providers — use OpenAI SDK with custom base URL
+            if not self._base_url:
+                raise ValueError(
+                    f"LLM_BASE_URL must be set when LLM_PROVIDER={self.provider}. "
+                    f"This should be your organization's OpenAI-compatible proxy endpoint "
+                    f"(e.g., https://your-proxy.company.com/v1)."
+                )
+            self._init_openai_compat()
         else:
             self._init_openai_compat()
 
     def _init_openai_compat(self):
-        """Initialize for any OpenAI-compatible provider."""
+        """Initialize for any OpenAI-compatible provider (Groq, OpenAI, Ollama, proxies)."""
         from openai import AsyncOpenAI
 
-        if self.provider == "custom":
+        if self.provider in ("custom", "bedrock_openai", "azure_anthropic"):
             if not self._base_url:
-                raise ValueError("LLM_BASE_URL must be set when LLM_PROVIDER=custom")
+                raise ValueError(f"LLM_BASE_URL must be set when LLM_PROVIDER={self.provider}")
             base_url = self._base_url
-            default_model = "gpt-4o"
+            preset = PROVIDER_PRESETS.get(self.provider, {})
+            default_model = preset.get("default_model", "gpt-4o")
         elif self.provider in PROVIDER_PRESETS:
             preset = PROVIDER_PRESETS[self.provider]
             base_url = preset["base_url"]
