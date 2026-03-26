@@ -1,8 +1,8 @@
 # Part Classification Agent
 
-A production-grade AI agent that reads mechanical parts from Excel, searches distributor APIs and the web for specifications, classifies each part into 81 categories, extracts structured attributes via regex pre-extraction + LLM validation, and writes per-class Excel output files with TC Class ID -- ready for Teamcenter PLM import.
+A production-grade AI agent that reads mechanical parts from Excel, searches distributor APIs and the web for specifications, classifies each part into 93 categories, extracts structured attributes via regex pre-extraction + LLM validation, and writes per-class Excel output files with TC Class ID -- ready for Teamcenter PLM import. Includes a PLMXML-to-JSON converter for importing Teamcenter classification hierarchies.
 
-**7,031 LOC | 17 modules | 8 LLM providers | 3 distributor APIs | 81 part classes | 46 attributes | 500+ aliases**
+**7,031 LOC | 18 modules | 8 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases**
 
 **Three execution modes:**
 
@@ -71,7 +71,7 @@ For each part in the input Excel:
 
 1. **Searches** for specs via distributor APIs first (DigiKey OAuth2, Mouser API key, McMaster-Carr mTLS), falling back to CloakBrowser stealth scraping, then DuckDuckGo web search with curl_cffi (Chrome 124 TLS fingerprint).
 2. **Cleans** content via HTML table extraction and smart truncation (3K/5K/8K char limits) to prioritize specs over navigation boilerplate.
-3. **Classifies** the part deterministically from web content (breadcrumbs, category labels, URL paths) with 95% accuracy. Falls back to LLM classification only when inconclusive. 81 part classes supported.
+3. **Classifies** the part deterministically from web content (breadcrumbs, category labels, URL paths) with 95% accuracy. Falls back to LLM classification only when inconclusive. 93 part classes supported (via JSON schema with Teamcenter-compatible hierarchical class tree).
 4. **Pre-extracts** attributes via regex patterns from HTML tables, key-value patterns, standards (DIN/ASME/ISO), and materials.
 5. **Validates** pre-extracted values with LLM using hybrid prompts (priority schema hints + maximize coverage) and fills any gaps. Converts all dimensional values to the target unit (inches or mm).
 6. **Normalizes** attributes via 500+ alias mappings to canonical names and **writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns.
@@ -117,7 +117,20 @@ Place your file at `input/PartClassifierInput.xlsx` with columns: Part Number, P
 
 ### 5. Classification Schema (optional customization)
 
-The Excel-based schema (`input/ClassificationSchema.xlsx`) defines 81 part classes, 46 canonical attributes, and 169 alias mappings. Edit this file to add new classes or modify attribute definitions. Falls back to hardcoded schemas if missing.
+The JSON-based schema is the primary schema source:
+
+- **`input/Classes.json`** -- Teamcenter-compatible hierarchical class tree with 93 classes. Each class has ICM-format IDs matching Teamcenter classid, parent-child relationships with attribute inheritance, and class aliases for web content classification.
+- **`input/Attributes.json`** -- Attribute dictionary with 46 attributes using 5-digit numeric IDs matching Teamcenter attribute IDs. Includes name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, and keyLOVID.
+
+Attribute inheritance: child classes automatically inherit all ancestor attributes. LOV normalization: extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" maps to "StainlessSteel").
+
+**Fallback chain:** JSON schema -> Excel schema (`ClassificationSchema.xlsx`) -> hardcoded defaults in `src/attr_schema.py`.
+
+To generate JSON schema files from Teamcenter PLMXML exports, use the included converter:
+
+```bash
+python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+```
 
 ### 6. Run
 
@@ -194,9 +207,11 @@ MCMASTER_CLIENT_KEY=path/to/client-key.pem
 
 The agent finds sources dynamically based on part number presence in content -- no dependency on hardcoded domain lists.
 
+- **Part number as PRIMARY signal:** Part number presence in page content is the primary scoring signal (+10 points). PREFERRED_DOMAINS is just a +2 tiebreaker, not a requirement.
 - **Dynamic source discovery:** For each part, DuckDuckGo results are scored by whether the manufacturer part number actually appears in the page content. The best page wins regardless of domain.
 - **No hardcoded domains:** Works for any manufacturer at scale (30K+ parts) without maintaining a list of "trusted" sites. New distributors and niche suppliers are discovered automatically.
 - **Part number verification:** Pages are ranked by a `_spec_score()` function that checks for the presence of the searched part number, specification tables, and technical content. A page that contains the exact part number scores higher than a generic catalog page.
+- **Datasheet search:** For electronic components, a dedicated datasheet search query is added to improve coverage.
 - **URL cache as learned knowledge:** Once a good source is found for a manufacturer part number, it is cached for 30 days. Subsequent runs skip search entirely for cached parts, and bad entries are evicted automatically.
 
 This approach scales to any industry vertical -- fasteners, bearings, electronics, semiconductor equipment -- without per-domain configuration.
@@ -255,7 +270,7 @@ output/
 - **Regex + LLM agreement tracking:** measures extraction confidence
 - **Hybrid extraction prompt:** priority schema hints + maximize coverage
 - **Canonical normalization:** 500+ alias mappings ensure consistent columns
-- **Excel-based schema:** 81 classes, 46 attrs, 169 aliases in `ClassificationSchema.xlsx`
+- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization (fallback: Excel -> hardcoded)
 - **Unit conversion:** inches <-> mm per part's specified unit
 - **Retry logic:** exponential backoff for timeouts, rate limits (429, 503)
 - **Validation retry:** re-extraction for missing attrs when >50% schema attrs unfilled
@@ -268,7 +283,7 @@ output/
 
 ---
 
-## Supported Part Classes (81)
+## Supported Part Classes (93)
 
 **Fasteners:** Flat Washer, Fender Washer, Split Lock Washer, Lock Washer, Internal Tooth Lock Washer, External Tooth Lock Washer, Hex Nut, Lock Nut, Wing Nut, Hex Bolt, Carriage Bolt, Cap Screw, Set Screw, Machine Screw, Socket Head Cap Screw, Cotter Pin, Dowel Pin, Roll Pin, Blind Rivet, E-Clip, C-Clip, Retaining Ring, Stud, Insert, Anchor
 
@@ -282,7 +297,7 @@ output/
 
 **Vacuum & Semiconductor:** Vacuum Valve, Gate Valve, Mass Flow Controller, Wafer Shipper, Wafer Carrier, Gas Filter, Liquid Filter, Pressure Gauge, Vacuum Gauge
 
-Other part types are handled with a default attribute schema. To add a new class, add it to `input/ClassificationSchema.xlsx` or `CLASS_SCHEMAS` in `src/attr_schema.py`.
+Other part types are handled with a default attribute schema. To add a new class, add it to `input/Classes.json` (preferred), `input/ClassificationSchema.xlsx` (fallback), or `CLASS_SCHEMAS` in `src/attr_schema.py` (hardcoded fallback).
 
 ---
 
@@ -293,14 +308,17 @@ PartClassifier/
 ├── main.py                    # API key CLI entry point
 ├── main_cc.py                 # Claude Code CLI entry point (zero API keys)
 ├── app.py                     # Streamlit web UI
+├── plmxml_to_json.py          # PLMXML → JSON converter (Teamcenter export → Classes/Attributes JSON)
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template (8 providers)
 ├── url_cache.json             # URL cache (30-day TTL, shared)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
 ├── input/
+│   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree, Teamcenter classids
+│   ├── Attributes.json                # JSON schema: 46 attributes, numeric IDs, LOV values, ranges
 │   ├── PartClassifierInput.xlsx       # Sample input
-│   └── ClassificationSchema.xlsx      # Excel-based schema (81 classes, 46 attrs, 169 aliases)
+│   └── ClassificationSchema.xlsx      # Excel-based schema fallback (81 classes, 46 attrs, 169 aliases)
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
@@ -314,7 +332,7 @@ PartClassifier/
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # Excel-based schema loader (81 classes, 500+ aliases)
+    ├── attr_schema.py         # JSON/Excel schema loader (93 classes, 500+ aliases, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
@@ -330,5 +348,6 @@ PartClassifier/
 - The `output/` folder is git-ignored and regenerated on each run.
 - Progress files (`progress.json`, `progress_cc.json`) are auto-generated for resume support and deleted on completion.
 - **Claude Code CLI mode** only needs `openpyxl` and `httpx` (+ `claude` CLI on PATH).
+- **Fuzzy column matching:** Input Excel headers are matched fuzzily, so minor naming variations are handled automatically.
 - Backward compatibility: `.env` files with only `GROQ_API_KEY` continue to work.
 - Windows UTF-8 encoding fix applied globally at startup to prevent encoding errors.

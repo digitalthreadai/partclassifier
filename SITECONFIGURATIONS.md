@@ -321,9 +321,44 @@ Each file contains: original input columns + Part Class + TC Class ID + Source U
 
 ## 10. Classification Schema
 
-### Excel-Based Schema (`input/ClassificationSchema.xlsx`)
+### JSON Schema (Primary -- `input/Classes.json` + `input/Attributes.json`)
 
-The primary schema source with 81 part classes, 46 canonical attributes, and 169 aliases. Columns:
+The primary schema source with Teamcenter-compatible hierarchical class trees:
+
+- **`input/Classes.json`** -- 93 classes with ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Each class has: id, classid, name, aliases, attributeslist (numeric attribute IDs), children.
+- **`input/Attributes.json`** -- 46 attributes with 5-digit numeric IDs matching Teamcenter attribute IDs. Each attribute has: name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, keyLOVID.
+
+**Attribute inheritance:** Child classes automatically inherit all ancestor attributes.
+
+**LOV normalization:** Extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" maps to "StainlessSteel").
+
+**Fallback chain:** JSON -> Excel -> hardcoded defaults.
+
+### PLMXML to JSON Converter
+
+To generate JSON schema files from Teamcenter PLMXML exports:
+
+```bash
+python plmxml_to_json.py --plmxml export.xml --output input/
+
+# With SML attribute definitions:
+python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+
+# Dry run (preview without writing):
+python plmxml_to_json.py --plmxml export.xml --dry-run
+
+# Merge with existing JSON files:
+python plmxml_to_json.py --plmxml export.xml --output input/ --merge
+
+# Demo mode (generate sample output):
+python plmxml_to_json.py --demo
+```
+
+The converter parses `<AdminClass>` tags, reconstructs the hierarchical tree, and resolves attribute->format->KeyLOV chains. Zero external dependencies (stdlib only).
+
+### Excel-Based Schema (Fallback -- `input/ClassificationSchema.xlsx`)
+
+Used when JSON schema files are not found. Defines 81 part classes, 46 canonical attributes, and 169 aliases. Columns:
 
 - **Class Name**: Canonical part class name
 - **TC Class ID**: Teamcenter classification ID
@@ -332,16 +367,20 @@ The primary schema source with 81 part classes, 46 canonical attributes, and 169
 
 ### Adding a New Part Class
 
-1. Add to `input/ClassificationSchema.xlsx` (preferred):
+1. Add to `input/Classes.json` (preferred):
+   - Add a new entry with classid, name, aliases, and attributeslist (numeric attribute IDs)
+   - Child classes inherit parent attributes automatically
+
+2. Or add to `input/ClassificationSchema.xlsx` (fallback):
    - Add a new row with class name, TC Class ID, and attributes
    - Add alias mappings as needed
 
-2. Or edit `src/attr_schema.py` (fallback):
+3. Or edit `src/attr_schema.py` (hardcoded fallback):
    - Add class name to `KNOWN_CLASSES`
    - Add canonical attribute list to `CLASS_SCHEMAS`
    - Add alias variants to `ALIASES`
 
-3. Optionally add abbreviation aliases to `CLASS_ALIASES` in `src/class_extractor.py` for deterministic classification:
+4. Optionally add abbreviation aliases to `CLASS_ALIASES` in `src/class_extractor.py` for deterministic classification:
 ```python
 "my alias": "My New Class",
 ```
@@ -405,6 +444,7 @@ No Dockerfile is included yet. For containerization:
 - [ ] Azure OpenAI configured (enterprise)
 - [ ] AWS Bedrock configured (enterprise)
 - [ ] Classification schema Excel customized
+- [ ] JSON schema files generated from PLMXML (if using Teamcenter)
 
 ### First Run
 - [ ] Input Excel placed in `input/` folder

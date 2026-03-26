@@ -95,6 +95,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <a href="#distributor-apis">Distributor APIs</a>
     <a href="#optimization">Optimization</a>
     <a href="#adaptive-search">Adaptive Search</a>
+    <a href="#json-schema">JSON Schema &amp; PLMXML</a>
     <div class="section-label">Reference</div>
     <a href="#benchmarks">Benchmarks</a>
     <a href="#output-format">Output Format</a>
@@ -109,7 +110,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
   <h1>Part Classification Agent</h1>
   <p class="subtitle">Production-grade AI agent for mechanical part classification and attribute extraction. 7,031 LOC across 17 modules.</p>
 
-  <p>PartClassifier reads mechanical parts from an Excel file, searches distributor APIs and the web for specifications, classifies each part into 81 categories with 95% accuracy, extracts structured attributes via regex pre-extraction + LLM validation using hybrid prompts, and writes one Excel output file per part class with TC Class ID -- ready for Teamcenter PLM import.</p>
+  <p>PartClassifier reads mechanical parts from an Excel file, searches distributor APIs and the web for specifications, classifies each part into 93 categories with 95% accuracy, extracts structured attributes via regex pre-extraction + LLM validation using hybrid prompts, and writes one Excel output file per part class with TC Class ID -- ready for Teamcenter PLM import.</p>
 
   <div class="mode-cards">
     <div class="mode-card">
@@ -252,6 +253,27 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
 
   <p>This approach scales to any industry vertical -- fasteners, bearings, electronics, semiconductor equipment -- without per-domain configuration.</p>
 
+  <h2 id="json-schema">JSON Schema &amp; PLMXML Import</h2>
+
+  <p>The classification schema is now driven by Teamcenter-compatible JSON files:</p>
+
+  <ul>
+    <li><strong><code>input/Classes.json</code></strong> -- Hierarchical class tree with 93 classes. ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Class aliases for web content classification.</li>
+    <li><strong><code>input/Attributes.json</code></strong> -- Attribute dictionary with 46 attributes. 5-digit numeric IDs matching Teamcenter attribute IDs. Includes unitOfMeasure, range, LOV values, and keyLOVID.</li>
+  </ul>
+
+  <p><strong>Attribute inheritance:</strong> Child classes automatically inherit all ancestor attributes. <strong>LOV normalization:</strong> Extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" &rarr; "StainlessSteel"). <strong>Fallback chain:</strong> JSON &rarr; Excel &rarr; hardcoded defaults.</p>
+
+  <h3>PLMXML Converter</h3>
+
+  <p>The included <code>plmxml_to_json.py</code> converts Teamcenter PLMXML exports to the JSON schema format:</p>
+
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+python plmxml_to_json.py --plmxml export.xml --dry-run     # preview without writing
+python plmxml_to_json.py --demo                             # generate sample output</pre>
+
+  <p>Parses <code>&lt;AdminClass&gt;</code> tags, reconstructs hierarchical trees, and resolves attribute&rarr;format&rarr;KeyLOV chains. Zero external dependencies (stdlib only). CLI modes: <code>--plmxml</code>, <code>--sml</code>, <code>--output</code>, <code>--dry-run</code>, <code>--merge</code>, <code>--demo</code>.</p>
+
   <h2 id="benchmarks">Benchmark Results (44 parts)</h2>
 
   <div class="bench-grid">
@@ -295,7 +317,7 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
     <li><strong>Regex + LLM agreement tracking:</strong> measures extraction confidence</li>
     <li><strong>Hybrid extraction prompt:</strong> priority schema hints + maximize coverage</li>
     <li><strong>Canonical normalization:</strong> 500+ alias mappings for consistent columns</li>
-    <li><strong>Excel-based schema:</strong> 81 classes, 46 attrs, 169 aliases in ClassificationSchema.xlsx</li>
+    <li><strong>JSON-based schema:</strong> 93 classes, 46 attrs in Classes.json + Attributes.json with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization (fallback: Excel &rarr; hardcoded)</li>
     <li><strong>TC Class ID mapping:</strong> Teamcenter integration in output Excel</li>
     <li><strong>Unit conversion:</strong> inches &harr; mm per part's unit</li>
     <li><strong>Retry logic:</strong> exponential backoff for timeouts (429, 503)</li>
@@ -308,7 +330,7 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
     <li><strong>21 production bug fixes:</strong> comprehensive edge case handling</li>
   </ul>
 
-  <h2 id="part-classes">Supported Part Classes (81)</h2>
+  <h2 id="part-classes">Supported Part Classes (93)</h2>
 
   <p><strong>Fasteners:</strong> <span class="tag">Flat Washer</span><span class="tag">Fender Washer</span><span class="tag">Split Lock Washer</span><span class="tag">Lock Washer</span><span class="tag">Internal Tooth Lock Washer</span><span class="tag">External Tooth Lock Washer</span><span class="tag">Hex Nut</span><span class="tag">Lock Nut</span><span class="tag">Wing Nut</span><span class="tag">Hex Bolt</span><span class="tag">Carriage Bolt</span><span class="tag">Cap Screw</span><span class="tag">Set Screw</span><span class="tag">Machine Screw</span><span class="tag">Socket Head Cap Screw</span><span class="tag">Cotter Pin</span><span class="tag">Dowel Pin</span><span class="tag">Roll Pin</span><span class="tag">Blind Rivet</span><span class="tag">E-Clip</span><span class="tag">C-Clip</span><span class="tag">Retaining Ring</span><span class="tag">Stud</span><span class="tag">Insert</span><span class="tag">Anchor</span></p>
 
@@ -322,7 +344,7 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
 
   <p><strong>Vacuum &amp; Semiconductor:</strong> <span class="tag">Vacuum Valve</span><span class="tag">Gate Valve</span><span class="tag">Mass Flow Controller</span><span class="tag">Wafer Shipper</span><span class="tag">Wafer Carrier</span><span class="tag">Gas Filter</span><span class="tag">Liquid Filter</span><span class="tag">Pressure Gauge</span><span class="tag">Vacuum Gauge</span></p>
 
-  <p style="color:var(--muted);font-size:.9rem;margin-top:8px">Other part types handled with default schema. Add new classes via <code>input/ClassificationSchema.xlsx</code> or <code>src/attr_schema.py</code>.</p>
+  <p style="color:var(--muted);font-size:.9rem;margin-top:8px">Other part types handled with default schema. Add new classes via <code>input/Classes.json</code> (preferred), <code>input/ClassificationSchema.xlsx</code> (fallback), or <code>src/attr_schema.py</code> (hardcoded fallback).</p>
 
   <h2 id="project-structure">Project Structure</h2>
 
@@ -330,14 +352,17 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
 ├── main.py                    # API key CLI entry point
 ├── main_cc.py                 # Claude Code CLI (zero API keys)
 ├── app.py                     # Streamlit web UI
+├── plmxml_to_json.py          # PLMXML → JSON converter
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template (8 providers)
 ├── url_cache.json             # URL cache (30-day TTL, shared)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
 ├── input/
+│   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree
+│   ├── Attributes.json                # JSON schema: 46 attrs, LOV values, ranges
 │   ├── PartClassifierInput.xlsx       # Sample input
-│   └── ClassificationSchema.xlsx      # Schema (81 classes, 46 attrs, 169 aliases)
+│   └── ClassificationSchema.xlsx      # Excel schema fallback (81 classes)
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
@@ -351,7 +376,7 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # Excel-based schema (81 classes, 500+ aliases)
+    ├── attr_schema.py         # JSON/Excel schema (93 classes, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes

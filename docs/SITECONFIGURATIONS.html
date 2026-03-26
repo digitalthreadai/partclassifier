@@ -102,6 +102,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <a href="#stealth">4. Stealth Browser</a>
     <a href="#input">5. Input Excel</a>
     <a href="#schema">6. Classification Schema</a>
+    <a href="#schema">PLMXML Converter</a>
     <div class="section-label">Reference</div>
     <a href="#env-ref">Environment Variables</a>
     <a href="#running">Running the Agent</a>
@@ -120,7 +121,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 
 <main class="content" id="top">
   <h1>Setup Guide</h1>
-  <p class="subtitle">Step-by-step configuration for PartClassifier. 8 LLM providers, 3 distributor APIs, stealth browser, Excel-based schema.</p>
+  <p class="subtitle">Step-by-step configuration for PartClassifier. 8 LLM providers, 3 distributor APIs, stealth browser, JSON-based Teamcenter schema, PLMXML converter.</p>
 
   <h2 id="python">1. Python Environment</h2>
 
@@ -349,9 +350,39 @@ python main_cc.py --workers 8    # 8 workers (faster)</pre>
 
   <h2 id="schema">6. Classification Schema</h2>
 
-  <h3>Excel-Based Schema (<code>input/ClassificationSchema.xlsx</code>)</h3>
+  <h3>JSON Schema (Primary -- <code>input/Classes.json</code> + <code>input/Attributes.json</code>)</h3>
 
-  <p>The primary schema source defining 81 part classes, 46 canonical attributes, and 169 alias mappings. This schema drives:</p>
+  <p>The primary schema source with Teamcenter-compatible hierarchical class trees:</p>
+  <ul>
+    <li><strong><code>Classes.json</code></strong> -- 93 classes with ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Each class has: id, classid, name, aliases, attributeslist (numeric attribute IDs), children.</li>
+    <li><strong><code>Attributes.json</code></strong> -- 46 attributes with 5-digit numeric IDs matching Teamcenter attribute IDs. Each attribute has: name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, keyLOVID.</li>
+  </ul>
+
+  <p><strong>Attribute inheritance:</strong> Child classes automatically inherit all ancestor attributes. <strong>LOV normalization:</strong> Extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" &rarr; "StainlessSteel"). <strong>Fallback chain:</strong> JSON &rarr; Excel &rarr; hardcoded defaults.</p>
+
+  <h3>PLMXML to JSON Converter</h3>
+
+  <p>To generate JSON schema files from Teamcenter PLMXML exports:</p>
+
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python plmxml_to_json.py --plmxml export.xml --output input/
+
+# With SML attribute definitions:
+python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+
+# Dry run (preview without writing):
+python plmxml_to_json.py --plmxml export.xml --dry-run
+
+# Merge with existing JSON files:
+python plmxml_to_json.py --plmxml export.xml --output input/ --merge
+
+# Demo mode (generate sample output):
+python plmxml_to_json.py --demo</pre>
+
+  <p>The converter parses <code>&lt;AdminClass&gt;</code> tags, reconstructs the hierarchical tree, and resolves attribute&rarr;format&rarr;KeyLOV chains. Zero external dependencies (stdlib only).</p>
+
+  <h3>Excel-Based Schema (Fallback -- <code>input/ClassificationSchema.xlsx</code>)</h3>
+
+  <p>Used when JSON schema files are not found. Defines 81 part classes, 46 canonical attributes, and 169 alias mappings. This schema drives:</p>
   <ul>
     <li>Which attributes are extracted per class</li>
     <li>Column ordering in output Excel files</li>
@@ -359,12 +390,11 @@ python main_cc.py --workers 8    # 8 workers (faster)</pre>
     <li>TC Class ID mapping for Teamcenter integration</li>
   </ul>
 
-  <p>If <code>ClassificationSchema.xlsx</code> is missing, the system falls back to hardcoded schemas in <code>src/attr_schema.py</code>.</p>
-
   <h3>Adding a New Part Class</h3>
   <ol>
-    <li><strong>Preferred:</strong> Add to <code>input/ClassificationSchema.xlsx</code> with class name, TC Class ID, and attributes</li>
-    <li><strong>Fallback:</strong> Edit <code>src/attr_schema.py</code> -- add to KNOWN_CLASSES, CLASS_SCHEMAS, and ALIASES</li>
+    <li><strong>Preferred:</strong> Add to <code>input/Classes.json</code> with classid, name, aliases, and attributeslist (numeric attribute IDs). Children inherit parent attributes automatically.</li>
+    <li><strong>Fallback:</strong> Add to <code>input/ClassificationSchema.xlsx</code> with class name, TC Class ID, and attributes</li>
+    <li><strong>Hardcoded fallback:</strong> Edit <code>src/attr_schema.py</code> -- add to KNOWN_CLASSES, CLASS_SCHEMAS, and ALIASES</li>
     <li><strong>Optional:</strong> Add abbreviation aliases to CLASS_ALIASES in <code>src/class_extractor.py</code> for deterministic classification</li>
   </ol>
 
@@ -510,6 +540,7 @@ python main_cc.py --workers 1    # sequential mode (debugging)</pre>
     <li onclick="toggleCheck(this)" data-key="azure"><div class="check-box"></div><div class="check-text">Azure OpenAI configured (enterprise)</div></li>
     <li onclick="toggleCheck(this)" data-key="bedrock"><div class="check-box"></div><div class="check-text">AWS Bedrock configured (enterprise)</div></li>
     <li onclick="toggleCheck(this)" data-key="schema"><div class="check-box"></div><div class="check-text">Classification schema Excel customized</div></li>
+    <li onclick="toggleCheck(this)" data-key="plmxml"><div class="check-box"></div><div class="check-text">JSON schema generated from PLMXML (if using Teamcenter)</div></li>
   </ul>
 
   <div class="check-section">First Run</div>

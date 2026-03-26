@@ -123,7 +123,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 
   <p>PartClassifier is a production-grade AI agent for mechanical part classification and attribute extraction, built for industrial engineering teams managing large inventories of fasteners, bearings, fittings, sensors, and other mechanical components. It automates the process of looking up part specifications from distributor websites, extracting structured attributes, and preparing classification-ready Excel outputs for Teamcenter PLM import.</p>
 
-  <p>The agent combines deterministic pattern matching (95% accuracy), regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs (DigiKey OAuth2, Mouser API, McMaster mTLS), stealth web scraping (CloakBrowser with 33 C++ patches), and intelligent caching -- to process thousands of parts with minimal human intervention. An Excel-based schema (<code>ClassificationSchema.xlsx</code>) with 81 classes, 46 attributes, and 169 aliases drives the entire pipeline.</p>
+  <p>The agent combines deterministic pattern matching (95% accuracy), regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs (DigiKey OAuth2, Mouser API, McMaster mTLS), stealth web scraping (CloakBrowser with 33 C++ patches), and intelligent caching -- to process thousands of parts with minimal human intervention. A JSON-based schema (<code>Classes.json</code> + <code>Attributes.json</code>) with 93 classes, 46 attributes, Teamcenter-compatible IDs, attribute inheritance, and LOV normalization drives the entire pipeline. A PLMXML converter (<code>plmxml_to_json.py</code>) imports classification hierarchies directly from Teamcenter exports.</p>
 
   <h2 id="landscape">Competitive Landscape</h2>
 
@@ -132,7 +132,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <tr><td>Manual lookup</td><td>Accurate, human-verified</td><td>Extremely slow (2-5 min/part)</td></tr>
     <tr><td>Generic web scrapers</td><td>Fast, programmable</td><td>Blocked by bot detection</td></tr>
     <tr><td>PLM vendor tools</td><td>Integrated with Teamcenter</td><td>Expensive licensing</td></tr>
-    <tr><td><strong>PartClassifier</strong></td><td>AI-driven, multi-source, 81 classes, 8 LLM providers, TC Class ID</td><td>Requires setup, LLM costs for large batches</td></tr>
+    <tr><td><strong>PartClassifier</strong></td><td>AI-driven, multi-source, 93 classes, 8 LLM providers, TC Class ID, PLMXML import</td><td>Requires setup, LLM costs for large batches</td></tr>
   </table>
 
   <h2 id="benchmarks">Benchmark Results (44 parts)</h2>
@@ -207,9 +207,14 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <p>Hybrid prompt: schema attrs as priority hints + maximize coverage. LLM validates regex pre-extracted values, fills gaps. Unit conversion (inches/mm). Validation retry for &gt;50% missing attrs. Temperature=0.</p>
     </div>
     <div class="feat">
-      <h4>Excel-Based Schema</h4>
+      <h4>JSON-Based Schema</h4>
       <div class="module">attr_schema.py</div>
-      <p>ClassificationSchema.xlsx: 81 classes, 46 canonical attributes, 169 aliases. Fallback to hardcoded schemas. 500+ alias mappings including DigiKey/Mouser API parameter names. Fuzzy schema matching.</p>
+      <p>Classes.json (93 classes, hierarchical tree, Teamcenter classids) + Attributes.json (46 attrs, 5-digit IDs, LOV values, ranges). Attribute inheritance: children inherit ancestor attrs. LOV normalization. Fallback: JSON &rarr; Excel &rarr; hardcoded. 500+ aliases. Fuzzy matching.</p>
+    </div>
+    <div class="feat">
+      <h4>PLMXML Converter</h4>
+      <div class="module">plmxml_to_json.py</div>
+      <p>Standalone script to convert Teamcenter PLMXML exports to JSON schema. Parses AdminClass tags, reconstructs hierarchical tree, resolves attribute&rarr;format&rarr;KeyLOV chains. CLI: --plmxml, --sml, --output, --dry-run, --merge, --demo. Zero external dependencies.</p>
     </div>
     <div class="feat">
       <h4>Per-Class Excel Output</h4>
@@ -373,6 +378,10 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <div class="version">v1.6 <span class="tag done">Done</span></div>
       <div class="desc">Excel-based schema (81 classes, 46 attrs, 169 aliases), TC Class ID, hybrid extraction prompts, 8th provider, content cleaner, 21 bug fixes</div>
     </div>
+    <div class="roadmap-item done">
+      <div class="version">v1.7 <span class="tag done">Done</span></div>
+      <div class="desc">JSON schema (93 classes), PLMXML converter, attribute inheritance, LOV normalization, adaptive search, fuzzy column matching</div>
+    </div>
     <div class="roadmap-item">
       <div class="version">v2.0 <span class="tag planned">Planned</span></div>
       <div class="desc">Teamcenter direct import, additional part classes</div>
@@ -385,14 +394,17 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 ├── main.py                    # API key CLI entry point
 ├── main_cc.py                 # Claude Code CLI (zero API keys)
 ├── app.py                     # Streamlit web UI
+├── plmxml_to_json.py          # PLMXML → JSON converter
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template (8 providers)
 ├── url_cache.json             # URL cache (30-day TTL + bad-entry eviction)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
 ├── input/
+│   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree
+│   ├── Attributes.json                # JSON schema: 46 attrs, LOV values, ranges
 │   ├── PartClassifierInput.xlsx       # Sample input
-│   └── ClassificationSchema.xlsx      # Schema (81 classes, 46 attrs, 169 aliases)
+│   └── ClassificationSchema.xlsx      # Excel schema fallback (81 classes)
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
@@ -406,7 +418,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # Excel-based schema (81 classes, 500+ aliases)
+    ├── attr_schema.py         # JSON/Excel schema (93 classes, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
