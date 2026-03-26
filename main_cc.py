@@ -44,6 +44,61 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 import asyncio
 
 from src.shared import rotate_manufacturers
+from src.metrics import RunMetrics
+
+# ── Thread-safe metrics wrapper ──────────────────────────────────────────────
+
+class ThreadSafeMetrics:
+    """Thread-safe wrapper around RunMetrics for use with ThreadPoolExecutor."""
+
+    def __init__(self):
+        self._metrics = RunMetrics()
+        self._lock = threading.Lock()
+
+    def record_part(self, classified: bool, attr_count: int):
+        with self._lock:
+            self._metrics.record_part(classified=classified, attr_count=attr_count)
+
+    def record_llm_call(self, call_type: str):
+        with self._lock:
+            self._metrics.record_llm_call(call_type)
+
+    def record_cache_hit(self, cache_type: str):
+        with self._lock:
+            self._metrics.record_cache_hit(cache_type)
+
+    def record_regex(self, regex_count: int, agreement: dict | None = None):
+        with self._lock:
+            self._metrics.record_regex(regex_count, agreement)
+
+    def print_summary(self):
+        self._metrics.print_summary()
+
+    def save_to_history(self, path):
+        self._metrics.save_to_history(path)
+
+
+# ── Sync retry for Claude CLI subprocess calls ───────────────────────────────
+
+MAX_CLI_RETRIES = 3
+CLI_RETRY_DELAY = 5
+
+def _retry_cli(fn, label: str, safe_print_fn=print):
+    """Retry a Claude CLI call on timeout/transient errors. Sync version."""
+    for attempt in range(1, MAX_CLI_RETRIES + 1):
+        try:
+            return fn()
+        except Exception as e:
+            err_str = str(e).lower()
+            if attempt < MAX_CLI_RETRIES and ("timeout" in err_str or "rate" in err_str
+                                               or "timed out" in err_str or "429" in str(e)):
+                wait = CLI_RETRY_DELAY * attempt
+                safe_print_fn(f"    {label} error (attempt {attempt}/{MAX_CLI_RETRIES}), retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                safe_print_fn(f"    {label} failed: {type(e).__name__}: {e}")
+                return None
+    return None
 
 BASE_DIR      = Path(__file__).parent
 
@@ -219,14 +274,16 @@ def _run_async(coro):
 def process_part(
     part: dict, client, index: int, total: int, part_class: str,
     api_sources: list | None = None,
+    metrics: ThreadSafeMetrics | None = None,
 ) -> dict:
     """Process a single part: scrape -> classify -> extract (single web scrape).
 
     Flow:
       1. Web scrape once via curl_cffi (WebScraper)
       2. Classify from scraped content (pattern matching, no LLM)
-      3. Extract attributes via Claude CLI using the cached URL (no re-search)
-      4. Fall back to Claude CLI web search only if curl_cffi found nothing
+      3. Regex pre-extract attributes from scraped content (no LLM cost)
+      4. Extract attributes via Claude CLI using the cached URL (no re-search)
+      5. Fall back to Claude CLI web search only if curl_cffi found nothing
     """
     mfg_part_num    = str(part.get("Manufacturer Part Number") or "").strip()
     mfg_name        = str(part.get("Manufacturer Name")        or "").strip()
@@ -291,6 +348,16 @@ def process_part(
         f"  Class   : {part_class}"
     )
 
+    # ── STEP 2.5: Regex pre-extraction from scraped content (no LLM cost) ───
+    from src.regex_extractor import regex_extract, compute_agreement
+    pre_extracted: dict[str, str] = {}
+    if scraped_content:
+        pre_extracted = regex_extract(scraped_content, part_class)
+        if pre_extracted:
+            safe_print(f"  [{index}/{total}] Regex: {len(pre_extracted)} attrs pre-extracted")
+            if metrics:
+                metrics.record_regex(len(pre_extracted))
+
     # ── STEP 3: Extract attributes ───────────────────────────────────────────
     from src.attr_schema import normalize_attrs
     attributes = {}
@@ -311,16 +378,32 @@ def process_part(
     # If we have a cached URL from scraping, use fetch_and_extract (no re-search)
     if not attributes and scraped_url:
         safe_print(f"  [{index}/{total}] Extracting from: {scraped_url}")
-        attributes, source_url = client._fetch_and_extract(
-            scraped_url, mfg_part_num, part_class, part_name, unit_of_measure
+        result = _retry_cli(
+            lambda: client._fetch_and_extract(
+                scraped_url, mfg_part_num, part_class, part_name, unit_of_measure
+            ),
+            f"[{index}/{total}] Extract",
+            safe_print,
         )
+        if result:
+            attributes, source_url = result
+            if metrics:
+                metrics.record_llm_call("extract")
 
     # Fall back to Claude CLI web search only if curl_cffi found nothing
     if not attributes:
         safe_print(f"  [{index}/{total}] Searching: {mfg_name} {mfg_part_num} ...")
-        attributes, source_url = client.search_and_extract(
-            mfg_name, mfg_part_num, part_class, part_name, unit_of_measure
+        result = _retry_cli(
+            lambda: client.search_and_extract(
+                mfg_name, mfg_part_num, part_class, part_name, unit_of_measure
+            ),
+            f"[{index}/{total}] Search+Extract",
+            safe_print,
         )
+        if result:
+            attributes, source_url = result
+            if metrics:
+                metrics.record_llm_call("extract")
 
     # Re-classify from extracted attributes if still unclassified
     if part_class in ("Unclassified", "Unknown") and attributes:
@@ -348,6 +431,11 @@ def process_part(
             part_name or f"{mfg_name} {mfg_part_num}", part_class, mfg_part_num, unit_of_measure
         )
 
+    # Log regex/LLM agreement if both produced results
+    if pre_extracted and attributes and metrics:
+        agreement = compute_agreement(pre_extracted, attributes)
+        metrics.record_regex(0, agreement)  # 0 = don't double-count
+
     if attributes:
         attr_lines = "\n".join(f"    {k}: {v}" for k, v in attributes.items())
         safe_print(f"  [{index}/{total}] Attrs ({len(attributes)}):\n{attr_lines}")
@@ -362,6 +450,12 @@ def process_part(
                 del cache[mfg_part_num]
                 save_cache(cache, _CACHE_PATH)
                 safe_print(f"  [{index}/{total}] Evicted bad cache: {scraped_url[:60]}")
+
+    if metrics:
+        metrics.record_part(
+            classified=(part_class not in ("Unclassified", "Unknown", "Error", "")),
+            attr_count=len(attributes),
+        )
 
     from src.attr_schema import get_tc_class_id
     return {
@@ -450,6 +544,7 @@ def main() -> None:
         return
 
     start_time = time.time()
+    run_metrics = ThreadSafeMetrics()
 
     # ── Phase 1: Batch classification (single-threaded, batches of 100) ──
     classifications = batch_classify(client, pending)
@@ -460,8 +555,11 @@ def main() -> None:
     # ── Phase 2: Parallel search + extract ──
     safe_print(f"\n  Phase 2: Search + extract ({len(pending)} parts, {num_workers} workers)...")
 
+    SAVE_EVERY = 25  # Batch progress saves to reduce I/O
     last_write_count = 0
+    last_save_count = 0
     shutdown_event = threading.Event()
+    _save_lock = threading.Lock()
 
     def worker_task(index: int, part: dict) -> None:
         """Worker function for thread pool - search+extract only."""
@@ -472,7 +570,7 @@ def main() -> None:
         part_class = classifications.get(key, "Unclassified")
 
         try:
-            result = process_part(part, client, index, total, part_class, api_sources)
+            result = process_part(part, client, index, total, part_class, api_sources, run_metrics)
             count = tracker.save_result(key, result)
         except Exception as e:
             safe_print(f"  [{index}/{total}] ERROR: {e}")
@@ -485,15 +583,18 @@ def main() -> None:
             }
             count = tracker.save_result(key, error_result, is_error=True)
 
-        # Save progress after every part
-        tracker.save_to_disk()
+        # Batch progress saves (every SAVE_EVERY parts instead of every part)
+        nonlocal last_write_count, last_save_count
+        with _save_lock:
+            if count - last_save_count >= SAVE_EVERY:
+                last_save_count = count
+                tracker.save_to_disk()
 
-        # Periodic Excel writes
-        nonlocal last_write_count
-        if count - last_write_count >= WRITE_INTERVAL:
-            last_write_count = count
-            safe_print(f"\n  ... writing intermediate output ({tracker.total_done}/{total} parts) ...")
-            _write_output(handler, tracker)
+            # Periodic Excel writes
+            if count - last_write_count >= WRITE_INTERVAL:
+                last_write_count = count
+                safe_print(f"\n  ... writing intermediate output ({tracker.total_done}/{total} parts) ...")
+                _write_output(handler, tracker)
 
     # Run with thread pool
     try:
@@ -518,6 +619,9 @@ def main() -> None:
         _write_output(handler, tracker)
         sys.exit(0)
 
+    # Final progress save
+    tracker.save_to_disk()
+
     # Final summary
     elapsed = time.time() - start_time
     processed = tracker.completed
@@ -533,6 +637,10 @@ def main() -> None:
         safe_print(f"  Classify  : {classify_elapsed:.0f}s")
         safe_print(f"  Total time: {elapsed:.0f}s ({elapsed/processed:.1f}s per part)")
         safe_print(f"  Throughput: {processed / (elapsed / 3600):.0f} parts/hour")
+
+    # Print metrics
+    run_metrics.print_summary()
+    run_metrics.save_to_history(BASE_DIR / "metrics_history.json")
 
     safe_print("Writing output files...")
     written = _write_output(handler, tracker)
