@@ -362,4 +362,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Windows requires ProactorEventLoop for subprocess support (CloakBrowser/Playwright)
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     asyncio.run(main())
