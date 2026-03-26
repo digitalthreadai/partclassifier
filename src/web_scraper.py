@@ -137,12 +137,17 @@ class WebScraper:
             sr = self._scrape_url(url)
             if not sr or not sr.content or len(sr.content) < MIN_USEFUL_CHARS:
                 continue
-            score = _spec_score(sr.content, mfg_part_num)
-            # Short-circuit on a trusted hit with solid score
-            if _is_preferred(url) and score >= 3:
+            score = _spec_score(sr.content, mfg_part_num, mfg_name)
+            # Preferred domains get a minor bonus (tiebreaker, not a gate)
+            if _is_preferred(url):
+                score += 2
+            # Short-circuit on HIGH relevance (part number found + specs)
+            # This works for ANY domain — no hardcoded domain dependency
+            if score >= 11:
                 self._cache[mfg_part_num] = url
                 save_cache(self._cache, _CACHE_PATH)
-                print(f"    Source (trusted): {url}  [score={score}]")
+                tag = "(trusted)" if _is_preferred(url) else "(general)"
+                print(f"    Source {tag}: {url}  [score={score}]")
                 return sr
             if score > best_score:
                 best_score = score
@@ -151,8 +156,8 @@ class WebScraper:
         if best_result:
             self._cache[mfg_part_num] = best_result.source_url
             save_cache(self._cache, _CACHE_PATH)
-            reliability = "(trusted)" if _is_preferred(best_result.source_url) else "(unverified)"
-            print(f"    Source {reliability}: {best_result.source_url}  [score={best_score}]")
+            tag = "(trusted)" if _is_preferred(best_result.source_url) else "(general)"
+            print(f"    Source {tag}: {best_result.source_url}  [score={best_score}]")
             return best_result
 
         # --- Stealth fallback: search + scrape via browser when curl_cffi found nothing ---
@@ -249,7 +254,14 @@ def _direct_part_url(mfg_name: str, part_number: str) -> str | None:
 
 
 def _build_queries(mfg_name: str, mfg_part_num: str, unit: str = "") -> list[str]:
-    """Return ordered list of search queries to try, preferring the requested unit system."""
+    """Return adaptive search queries. Works for any manufacturer without hardcoded domains.
+
+    Strategy:
+    1. Simple manufacturer + part number (let search engine figure out intent)
+    2. Part number + specifications (focused)
+    3. Part number + datasheet (for electronic/technical parts)
+    4. McMaster-specific queries (skdin.com mirror) when applicable
+    """
     unit_hint = "mm" if unit.lower() == "mm" else "inches" if unit.lower() == "inches" else ""
     is_mcmaster = "mcmaster" in mfg_name.lower()
 
@@ -257,19 +269,15 @@ def _build_queries(mfg_name: str, mfg_part_num: str, unit: str = "") -> list[str
 
     if is_mcmaster:
         queries += [
-            f"skdin {mfg_part_num}",                                           # targets skdin.com directly
+            f"skdin {mfg_part_num}",
             f"McMaster {mfg_part_num} specifications {unit_hint}".strip(),
-            f"McMaster {mfg_part_num} dimensions {unit_hint}".strip(),
-        ]
-    else:
-        queries += [
-            f"{mfg_name} {mfg_part_num} specifications {unit_hint}".strip(),
         ]
 
+    # Universal queries — work for any manufacturer
     queries += [
-        f"{mfg_part_num} specifications {unit_hint}".strip(),
-        f'"{mfg_part_num}" dimensions datasheet',
-        f"{mfg_name} {mfg_part_num} datasheet",  # electronic components often indexed as datasheets
+        f"{mfg_name} {mfg_part_num}",                              # simple, let DuckDuckGo decide
+        f"{mfg_part_num} specifications {unit_hint}".strip(),       # spec-focused
+        f"{mfg_name} {mfg_part_num} datasheet",                    # datasheet (electronics)
     ]
     return queries
 
@@ -347,13 +355,22 @@ SPEC_KEYWORDS = [
     "stainless", "washer", "screw size", "specifications",
 ]
 
-def _spec_score(content: str, part_num: str) -> int:
-    """Score content by spec-keyword density. Higher = richer spec data."""
+def _spec_score(content: str, part_num: str, mfg_name: str = "") -> int:
+    """Score content by relevance to the part. Higher = better source.
+
+    Scoring: part number presence is the DOMINANT signal (not domain-based).
+    This ensures the agent works for any manufacturer without hardcoded domains.
+    """
     lower = content.lower()
     score = sum(1 for kw in SPEC_KEYWORDS if kw in lower)
-    # Bonus if the exact part number appears in the content
+    # Part number in content is the STRONGEST relevance signal
     if part_num.lower() in lower:
-        score += 3
+        score += 10
+    # Manufacturer name adds confidence
+    if mfg_name:
+        mfg_words = [w for w in mfg_name.lower().split() if len(w) > 2]
+        if any(w in lower for w in mfg_words):
+            score += 3
     return score
 
 
