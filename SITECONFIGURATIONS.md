@@ -240,7 +240,8 @@ If `ClassificationSchema.xlsx` is missing, the system falls back to hardcoded sc
 | `MCMASTER_BEARER_TOKEN` | No | McMaster API bearer token | eprocurement@mcmaster.com |
 | `MCMASTER_CLIENT_CERT` | No | Path to McMaster client cert | eprocurement@mcmaster.com |
 | `MCMASTER_CLIENT_KEY` | No | Path to McMaster client key | eprocurement@mcmaster.com |
-| `STEALTH_BROWSER_ENABLED` | No | true/false to toggle CloakBrowser | N/A (default: true) |
+| `STEALTH_BROWSER_ENABLED` | No | true/false to toggle CloakBrowser (default: true) | N/A |
+| `SSL_VERIFY` | No | true/false to toggle SSL certificate verification (default: true). Set to false for internal/self-signed certs | N/A |
 | `GROQ_API_KEY` | No | Legacy fallback (still works) | console.groq.com |
 
 ---

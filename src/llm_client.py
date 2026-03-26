@@ -43,6 +43,9 @@ Configuration (environment variables):
 
 import os
 
+# SSL verification — configurable via .env (default: enabled)
+_SSL_VERIFY = os.getenv("SSL_VERIFY", "true").lower() not in ("false", "0", "no")
+
 # Provider presets: (base_url, default_model, display_label)
 PROVIDER_PRESETS = {
     "groq": {
@@ -198,10 +201,11 @@ class LLMClient:
         if not self.model:
             self.model = default_model
 
-        self._client = AsyncOpenAI(
-            base_url=base_url,
-            api_key=self.api_key or "ollama",  # Ollama doesn't need a real key
-        )
+        client_kwargs = dict(base_url=base_url, api_key=self.api_key or "ollama")
+        if not _SSL_VERIFY:
+            import httpx
+            client_kwargs["http_client"] = httpx.AsyncClient(verify=False)
+        self._client = AsyncOpenAI(**client_kwargs)
         self._is_anthropic = False
 
     def _init_anthropic(self):
@@ -243,12 +247,16 @@ class LLMClient:
         if not self.model:
             self.model = deployment or PROVIDER_PRESETS["azure_openai"]["default_model"]
 
-        self._client = AsyncAzureOpenAI(
+        azure_kwargs = dict(
             azure_endpoint=endpoint,
             api_version=api_version,
             api_key=self.api_key,
             azure_deployment=deployment or None,
         )
+        if not _SSL_VERIFY:
+            import httpx
+            azure_kwargs["http_client"] = httpx.AsyncClient(verify=False)
+        self._client = AsyncAzureOpenAI(**azure_kwargs)
         self._is_anthropic = False
 
     def _init_bedrock(self):

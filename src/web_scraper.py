@@ -7,6 +7,7 @@ Distributor APIs (DigiKey, Mouser, McMaster) are tried first when configured.
 Falls back to DuckDuckGo web scraping if no API returns sufficient data.
 """
 
+import os
 import urllib.parse
 import re
 import json
@@ -17,6 +18,13 @@ from bs4 import BeautifulSoup
 
 from src.api_sources import SourceResult, get_api_sources
 from src.content_cleaner import extract_content
+
+# SSL verification — configurable via .env (default: enabled)
+SSL_VERIFY = os.getenv("SSL_VERIFY", "true").lower() not in ("false", "0", "no")
+if not SSL_VERIFY:
+    import warnings
+    warnings.filterwarnings("ignore", message=".*SSL.*")
+    print("  WARNING: SSL verification disabled (SSL_VERIFY=false)")
 from src.shared import load_cache, save_cache
 
 # Optional stealth browser for bot-protected sites (McMaster-Carr, etc.)
@@ -42,7 +50,7 @@ SKIP_DOMAINS = {
 
 class WebScraper:
     def __init__(self):
-        self._session = cffi_requests.Session(impersonate="chrome124")
+        self._session = cffi_requests.Session(impersonate="chrome124", verify=SSL_VERIFY)
         self._cache = load_cache(_CACHE_PATH)
         self._api_sources = get_api_sources()
         self._stealth: StealthScraper | None = None

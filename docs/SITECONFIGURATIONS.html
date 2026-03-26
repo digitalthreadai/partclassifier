@@ -105,6 +105,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <a href="#schema">PLMXML Converter</a>
     <div class="section-label">Reference</div>
     <a href="#env-ref">Environment Variables</a>
+    <a href="#security">Security Settings</a>
     <a href="#running">Running the Agent</a>
     <a href="#output">Output</a>
     <a href="#caches">Cache Management</a>
@@ -419,8 +420,26 @@ python plmxml_to_json.py --demo</pre>
     <tr><td><code>MCMASTER_CLIENT_CERT</code></td><td>No</td><td>Path to McMaster client cert</td></tr>
     <tr><td><code>MCMASTER_CLIENT_KEY</code></td><td>No</td><td>Path to McMaster client key</td></tr>
     <tr><td><code>STEALTH_BROWSER_ENABLED</code></td><td>No</td><td>true/false to toggle CloakBrowser (default: true)</td></tr>
+    <tr><td><code>SSL_VERIFY</code></td><td>No</td><td>true/false to toggle SSL certificate verification (default: true). Set to false for internal/self-signed certs</td></tr>
     <tr><td><code>GROQ_API_KEY</code></td><td>No</td><td>Legacy fallback (still works)</td></tr>
   </table>
+
+  <h2 id="security">Security Settings</h2>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">SSL Verification &amp; Stealth Browser</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <p>These settings control network security behavior for scraping and API calls.</p>
+      <div class="env-block">
+        <span class="env-comment"># Disable SSL certificate verification (for internal/self-signed certs)</span><br>
+        <span class="env-key">SSL_VERIFY</span>=<span class="env-val">false</span><br><br>
+        <span class="env-comment"># Disable CloakBrowser stealth scraping</span><br>
+        <span class="env-key">STEALTH_BROWSER_ENABLED</span>=<span class="env-val">false</span>
+      </div>
+      <p><code>SSL_VERIFY</code> defaults to <code>true</code>. Set to <code>false</code> when running behind a corporate proxy or against internal servers with self-signed certificates. Applies to all HTTP requests (web scraping, API calls, distributor APIs).</p>
+      <p><code>STEALTH_BROWSER_ENABLED</code> defaults to <code>true</code>. Set to <code>false</code> to skip CloakBrowser stealth scraping entirely. The pipeline will fall back to curl_cffi for all web requests.</p>
+    </div></div>
+  </div>
 
   <h2 id="running">Running the Agent</h2>
 

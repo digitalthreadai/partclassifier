@@ -165,6 +165,15 @@ The Claude Code CLI mode (`main_cc.py`) uses the `claude` CLI on PATH and needs 
 
 ---
 
+## Security Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSL_VERIFY` | `true` | Set to `false` to disable SSL certificate verification (for internal networks with self-signed certs) |
+| `STEALTH_BROWSER_ENABLED` | `true` | Set to `false` to disable CloakBrowser stealth scraping |
+
+---
+
 ## Distributor API Configuration (Optional)
 
 The agent queries distributor APIs for structured part data before falling back to web scraping. When an API returns 3+ attributes, LLM extraction is skipped entirely.

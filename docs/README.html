@@ -210,6 +210,8 @@ python main.py --clear-cache       # delete cache before run</pre>
 
   <p><code>AZURE_OPENAI_DEPLOYMENT</code> is optional -- defaults to the model name if not set. The Claude Code CLI mode (<code>main_cc.py</code>) uses the <code>claude</code> CLI on PATH and needs no <code>.env</code> configuration.</p>
 
+  <p>To disable SSL certificate verification (e.g., for internal networks with self-signed certs), set <code>SSL_VERIFY=false</code> in your <code>.env</code> file.</p>
+
   <p>Configure in <code>.env</code>:</p>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>LLM_PROVIDER=groq
 LLM_API_KEY=gsk_your_groq_key_here</pre>
