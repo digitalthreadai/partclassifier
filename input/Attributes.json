@@ -1,0 +1,750 @@
+{
+  "version": "1.0",
+  "description": "Teamcenter-compatible attribute dictionary for PartClassifier",
+  "attributes": [
+    {
+      "id": "23990",
+      "name": "Inner Diameter",
+      "shortname": "ID",
+      "aliases": [
+        "id",
+        "i.d.",
+        "bore diameter",
+        "bore",
+        "hole diameter",
+        "hole size",
+        "inside diameter"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "23991",
+      "name": "Outer Diameter",
+      "shortname": "OD",
+      "aliases": [
+        "od",
+        "o.d.",
+        "outside diameter",
+        "outer dia"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "23992",
+      "name": "Thickness",
+      "shortname": "THK",
+      "aliases": [
+        "thk",
+        "thickness range",
+        "overall thickness"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "23993",
+      "name": "Material",
+      "shortname": "MAT",
+      "aliases": [
+        "material type",
+        "alloy",
+        "body material",
+        "material - body"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": [
+        "StainlessSteel",
+        "CarbonSteel",
+        "AlloySteel",
+        "Brass",
+        "Aluminum",
+        "Nylon",
+        "Copper",
+        "Titanium",
+        "Plastic",
+        "Rubber"
+      ],
+      "keyLOVID": "LOV_23993"
+    },
+    {
+      "id": "23994",
+      "name": "Finish",
+      "shortname": "FIN",
+      "aliases": [
+        "coating",
+        "surface finish",
+        "plating",
+        "surface treatment"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": [
+        "Plain",
+        "ZincPlated",
+        "BlackOxide",
+        "Anodized",
+        "Chromate",
+        "Passivated",
+        "Galvanized",
+        "NickelPlated"
+      ],
+      "keyLOVID": "LOV_23994"
+    },
+    {
+      "id": "23995",
+      "name": "Standard",
+      "shortname": "STD",
+      "aliases": [
+        "specifications met",
+        "specs met",
+        "specification",
+        "spec",
+        "norm"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "23996",
+      "name": "Screw Size",
+      "shortname": "SS",
+      "aliases": [
+        "for screw size",
+        "thread size",
+        "thread",
+        "nominal thread size",
+        "bolt size",
+        "fastener size",
+        "screw/bolt size"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "23997",
+      "name": "Hardness",
+      "shortname": "HRD",
+      "aliases": [
+        "hardness rating"
+      ],
+      "unitOfMeasure": [
+        "HRC",
+        "HRB",
+        "HV"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "23998",
+      "name": "System of Measurement",
+      "shortname": "SOM",
+      "aliases": [
+        "measurement system",
+        "unit system"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": [
+        "Metric",
+        "Inch",
+        "Imperial"
+      ],
+      "keyLOVID": "LOV_23998"
+    },
+    {
+      "id": "23999",
+      "name": "RoHS",
+      "shortname": "RHS",
+      "aliases": [
+        "rohs compliant",
+        "rohs compliance"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": [
+        "Compliant",
+        "NonCompliant",
+        "Exempt"
+      ],
+      "keyLOVID": "LOV_23999"
+    },
+    {
+      "id": "24000",
+      "name": "REACH",
+      "shortname": "RCH",
+      "aliases": [
+        "reach compliant",
+        "reach compliance"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": [
+        "Compliant",
+        "NonCompliant"
+      ],
+      "keyLOVID": "LOV_24000"
+    },
+    {
+      "id": "24001",
+      "name": "Performance",
+      "shortname": "PRF",
+      "aliases": [
+        "corrosion resistance"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24002",
+      "name": "Washer Type",
+      "shortname": "WT",
+      "aliases": [
+        "type",
+        "head type",
+        "head style"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24003",
+      "name": "Length",
+      "shortname": "LEN",
+      "aliases": [
+        "overall length",
+        "stroke",
+        "stroke length"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24004",
+      "name": "Width",
+      "shortname": "WID",
+      "aliases": [],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24005",
+      "name": "Height",
+      "shortname": "HGT",
+      "aliases": [],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24006",
+      "name": "Head Diameter",
+      "shortname": "HD",
+      "aliases": [
+        "head dia"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24007",
+      "name": "Head Height",
+      "shortname": "HH",
+      "aliases": [
+        "head thickness"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24008",
+      "name": "Thread Pitch",
+      "shortname": "TP",
+      "aliases": [
+        "thread pitch - metric",
+        "threads per inch"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "TPI"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24009",
+      "name": "Drive Type",
+      "shortname": "DT",
+      "aliases": [
+        "drive style",
+        "socket type"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": [
+        "Hex",
+        "Phillips",
+        "Torx",
+        "Slotted",
+        "HexSocket"
+      ],
+      "keyLOVID": "LOV_24009"
+    },
+    {
+      "id": "24010",
+      "name": "Grade",
+      "shortname": "GRD",
+      "aliases": [
+        "class",
+        "strength grade",
+        "property class"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24011",
+      "name": "Point Type",
+      "shortname": "PT",
+      "aliases": [
+        "point style",
+        "tip type"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24012",
+      "name": "Nut Type",
+      "shortname": "NT",
+      "aliases": [
+        "nut style"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24013",
+      "name": "Width Across Flats",
+      "shortname": "WAF",
+      "aliases": [
+        "wrench size",
+        "af",
+        "s dimension"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24014",
+      "name": "Diameter",
+      "shortname": "DIA",
+      "aliases": [
+        "pin diameter",
+        "shaft diameter"
+      ],
+      "unitOfMeasure": [
+        "mm",
+        "inches"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24015",
+      "name": "Speed Rating",
+      "shortname": "SPD",
+      "aliases": [
+        "max speed",
+        "limiting speed",
+        "reference speed"
+      ],
+      "unitOfMeasure": [
+        "rpm"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24016",
+      "name": "Dynamic Load Rating",
+      "shortname": "DLR",
+      "aliases": [
+        "dynamic load",
+        "basic dynamic load"
+      ],
+      "unitOfMeasure": [
+        "N",
+        "kN"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24017",
+      "name": "Static Load Rating",
+      "shortname": "SLR",
+      "aliases": [
+        "static load",
+        "basic static load"
+      ],
+      "unitOfMeasure": [
+        "N",
+        "kN"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24018",
+      "name": "Tolerance",
+      "shortname": "TOL",
+      "aliases": [
+        "tolerance class",
+        "accuracy"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24019",
+      "name": "Voltage",
+      "shortname": "VLT",
+      "aliases": [
+        "rated voltage",
+        "supply voltage",
+        "operating voltage"
+      ],
+      "unitOfMeasure": [
+        "V",
+        "VDC",
+        "VAC"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24020",
+      "name": "Current",
+      "shortname": "CUR",
+      "aliases": [
+        "rated current",
+        "max current",
+        "current rating"
+      ],
+      "unitOfMeasure": [
+        "A",
+        "mA"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24021",
+      "name": "Power",
+      "shortname": "PWR",
+      "aliases": [
+        "power consumption",
+        "wattage"
+      ],
+      "unitOfMeasure": [
+        "W",
+        "mW"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24022",
+      "name": "Resistance",
+      "shortname": "RES",
+      "aliases": [
+        "contact resistance",
+        "insulation resistance"
+      ],
+      "unitOfMeasure": [
+        "ohm",
+        "kohm",
+        "Mohm"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24023",
+      "name": "Temperature",
+      "shortname": "TMP",
+      "aliases": [
+        "operating temperature",
+        "temperature range",
+        "max temperature"
+      ],
+      "unitOfMeasure": [
+        "C",
+        "F"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24024",
+      "name": "Response Time",
+      "shortname": "RT",
+      "aliases": [
+        "switching frequency",
+        "response frequency"
+      ],
+      "unitOfMeasure": [
+        "ms",
+        "Hz"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24025",
+      "name": "Sensing Distance",
+      "shortname": "SD",
+      "aliases": [
+        "detection range",
+        "sensing range",
+        "detecting distance"
+      ],
+      "unitOfMeasure": [
+        "mm"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24026",
+      "name": "Output Type",
+      "shortname": "OUT",
+      "aliases": [
+        "output",
+        "output configuration",
+        "npn",
+        "pnp"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24027",
+      "name": "Protection Rating",
+      "shortname": "IP",
+      "aliases": [
+        "ip rating",
+        "ingress protection",
+        "ip67",
+        "ip68"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24028",
+      "name": "Number of Contacts",
+      "shortname": "NOC",
+      "aliases": [
+        "number of positions",
+        "number of pins",
+        "pin count",
+        "contacts"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24029",
+      "name": "Contact Material",
+      "shortname": "CM",
+      "aliases": [
+        "contact plating",
+        "contact finish"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24030",
+      "name": "Pitch",
+      "shortname": "PCH",
+      "aliases": [
+        "pin pitch",
+        "contact pitch",
+        "spacing"
+      ],
+      "unitOfMeasure": [
+        "mm"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24031",
+      "name": "Port Size",
+      "shortname": "PS",
+      "aliases": [
+        "connection size",
+        "pipe size"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24032",
+      "name": "Pressure",
+      "shortname": "PRS",
+      "aliases": [
+        "operating pressure",
+        "rated pressure",
+        "working pressure",
+        "max pressure"
+      ],
+      "unitOfMeasure": [
+        "bar",
+        "psi",
+        "kPa"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24033",
+      "name": "Flow Rate",
+      "shortname": "FR",
+      "aliases": [
+        "flow",
+        "cv value",
+        "conductance"
+      ],
+      "unitOfMeasure": null,
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24034",
+      "name": "Micron Rating",
+      "shortname": "MR",
+      "aliases": [
+        "filtration rating",
+        "pore size",
+        "removal rating"
+      ],
+      "unitOfMeasure": [
+        "um",
+        "micron"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    },
+    {
+      "id": "24035",
+      "name": "Weight",
+      "shortname": "WGT",
+      "aliases": [
+        "mass",
+        "net weight"
+      ],
+      "unitOfMeasure": [
+        "g",
+        "kg",
+        "lb"
+      ],
+      "range": null,
+      "lov": null,
+      "keyLOVID": null
+    }
+  ]
+}
