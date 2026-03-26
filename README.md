@@ -132,18 +132,23 @@ python main_cc.py --workers 8    # Claude Code CLI with 8 parallel workers
 
 ## LLM Configuration
 
-8 providers supported:
+9 scenarios across 8 providers:
 
-| Provider | Default Model | Key Required | Get Key |
-|----------|--------------|-------------|---------|
-| `groq` | llama-3.3-70b-versatile | Yes (free) | console.groq.com |
-| `openai` | gpt-4o | Yes | platform.openai.com |
-| `anthropic` | claude-sonnet-4-20250514 | Yes | console.anthropic.com |
-| `azure_openai` | gpt-4o | Yes | portal.azure.com |
-| `bedrock` | anthropic.claude-sonnet-4-20250514-v1:0 | No (AWS creds) | console.aws.amazon.com |
-| `ollama` | llama3.1 | No | ollama.ai |
-| `custom` | (user-defined) | Varies | Your endpoint |
-| Claude Code CLI | (any backend) | No | claude CLI on PATH |
+| Scenario | LLM_PROVIDER | Required Vars | Notes |
+|----------|-------------|---------------|-------|
+| Groq (free, fast) | `groq` | `LLM_API_KEY` | Default. Free tier: 100K tokens/day |
+| OpenAI (GPT-4o) | `openai` | `LLM_API_KEY` | Paid |
+| Anthropic (Claude) | `anthropic` | `LLM_API_KEY` | Direct Anthropic API |
+| Azure + GPT | `azure_openai` | `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT` | GPT on Azure |
+| Azure + Claude | `azure_openai` | `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `LLM_MODEL` | Claude on Azure (same provider!) |
+| AWS Bedrock (native) | `bedrock` | `AWS_REGION` + IAM creds | No API key needed |
+| AWS Bedrock (proxy) | `bedrock_openai` | `LLM_API_KEY`, `LLM_BASE_URL` | OpenAI-compatible proxy |
+| Local (Ollama) | `ollama` | (none) | Free, offline |
+| Custom endpoint | `custom` | `LLM_API_KEY`, `LLM_BASE_URL` | Any OpenAI-compatible API |
+
+`AZURE_OPENAI_DEPLOYMENT` is optional -- defaults to the model name if not set.
+
+The Claude Code CLI mode (`main_cc.py`) uses the `claude` CLI on PATH and needs no `.env` configuration.
 
 ---
 
@@ -182,6 +187,19 @@ MCMASTER_CLIENT_KEY=path/to/client-key.pem
 | **Content cleaner** | HTML table extraction + smart truncation | Better spec-to-noise ratio |
 | **Manufacturer rotation** | Round-robin interleave by manufacturer | Reduces bot detection |
 | **Distributor APIs** | DigiKey OAuth2, Mouser API, McMaster mTLS | 100% for API-matched parts |
+
+---
+
+## Adaptive Search
+
+The agent finds sources dynamically based on part number presence in content -- no dependency on hardcoded domain lists.
+
+- **Dynamic source discovery:** For each part, DuckDuckGo results are scored by whether the manufacturer part number actually appears in the page content. The best page wins regardless of domain.
+- **No hardcoded domains:** Works for any manufacturer at scale (30K+ parts) without maintaining a list of "trusted" sites. New distributors and niche suppliers are discovered automatically.
+- **Part number verification:** Pages are ranked by a `_spec_score()` function that checks for the presence of the searched part number, specification tables, and technical content. A page that contains the exact part number scores higher than a generic catalog page.
+- **URL cache as learned knowledge:** Once a good source is found for a manufacturer part number, it is cached for 30 days. Subsequent runs skip search entirely for cached parts, and bad entries are evicted automatically.
+
+This approach scales to any industry vertical -- fasteners, bearings, electronics, semiconductor equipment -- without per-domain configuration.
 
 ---
 

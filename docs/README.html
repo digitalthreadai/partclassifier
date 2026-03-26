@@ -94,6 +94,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <a href="#llm-providers">LLM Providers</a>
     <a href="#distributor-apis">Distributor APIs</a>
     <a href="#optimization">Optimization</a>
+    <a href="#adaptive-search">Adaptive Search</a>
     <div class="section-label">Reference</div>
     <a href="#benchmarks">Benchmarks</a>
     <a href="#output-format">Output Format</a>
@@ -191,17 +192,22 @@ python main.py --clear-cache       # delete cache before run</pre>
 
   <h2 id="llm-providers">LLM Providers (8)</h2>
 
+  <p>9 scenarios across 8 providers:</p>
+
   <table>
-    <tr><th>Provider</th><th>Default Model</th><th>Key Required</th><th>Get Key</th></tr>
-    <tr><td><code>groq</code></td><td>llama-3.3-70b-versatile</td><td>Yes (free)</td><td>console.groq.com</td></tr>
-    <tr><td><code>openai</code></td><td>gpt-4o</td><td>Yes</td><td>platform.openai.com</td></tr>
-    <tr><td><code>anthropic</code></td><td>claude-sonnet-4-20250514</td><td>Yes</td><td>console.anthropic.com</td></tr>
-    <tr><td><code>azure_openai</code></td><td>gpt-4o</td><td>Yes</td><td>portal.azure.com</td></tr>
-    <tr><td><code>bedrock</code></td><td>anthropic.claude-sonnet-4-20250514-v1:0</td><td>No (AWS creds)</td><td>console.aws.amazon.com</td></tr>
-    <tr><td><code>ollama</code></td><td>llama3.1</td><td>No</td><td>ollama.ai</td></tr>
-    <tr><td><code>custom</code></td><td>(user-defined)</td><td>Varies</td><td>Your endpoint</td></tr>
-    <tr><td>Claude Code CLI</td><td>(any backend)</td><td>No</td><td>claude CLI on PATH</td></tr>
+    <tr><th>Scenario</th><th>LLM_PROVIDER</th><th>Required Vars</th><th>Notes</th></tr>
+    <tr><td>Groq (free, fast)</td><td><code>groq</code></td><td><code>LLM_API_KEY</code></td><td>Default. Free tier: 100K tokens/day</td></tr>
+    <tr><td>OpenAI (GPT-4o)</td><td><code>openai</code></td><td><code>LLM_API_KEY</code></td><td>Paid</td></tr>
+    <tr><td>Anthropic (Claude)</td><td><code>anthropic</code></td><td><code>LLM_API_KEY</code></td><td>Direct Anthropic API</td></tr>
+    <tr><td>Azure + GPT</td><td><code>azure_openai</code></td><td><code>LLM_API_KEY</code>, <code>AZURE_OPENAI_ENDPOINT</code></td><td>GPT on Azure</td></tr>
+    <tr><td>Azure + Claude</td><td><code>azure_openai</code></td><td><code>LLM_API_KEY</code>, <code>AZURE_OPENAI_ENDPOINT</code>, <code>LLM_MODEL</code></td><td>Claude on Azure (same provider!)</td></tr>
+    <tr><td>AWS Bedrock (native)</td><td><code>bedrock</code></td><td><code>AWS_REGION</code> + IAM creds</td><td>No API key needed</td></tr>
+    <tr><td>AWS Bedrock (proxy)</td><td><code>bedrock_openai</code></td><td><code>LLM_API_KEY</code>, <code>LLM_BASE_URL</code></td><td>OpenAI-compatible proxy</td></tr>
+    <tr><td>Local (Ollama)</td><td><code>ollama</code></td><td>(none)</td><td>Free, offline</td></tr>
+    <tr><td>Custom endpoint</td><td><code>custom</code></td><td><code>LLM_API_KEY</code>, <code>LLM_BASE_URL</code></td><td>Any OpenAI-compatible API</td></tr>
   </table>
+
+  <p><code>AZURE_OPENAI_DEPLOYMENT</code> is optional -- defaults to the model name if not set. The Claude Code CLI mode (<code>main_cc.py</code>) uses the <code>claude</code> CLI on PATH and needs no <code>.env</code> configuration.</p>
 
   <p>Configure in <code>.env</code>:</p>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>LLM_PROVIDER=groq
@@ -232,6 +238,19 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
     <tr><td>Manufacturer rotation</td><td>Round-robin interleave by manufacturer</td><td>Reduces bot detection</td></tr>
     <tr><td>Distributor APIs</td><td>DigiKey OAuth2, Mouser API, McMaster mTLS</td><td>100% for API-matched</td></tr>
   </table>
+
+  <h2 id="adaptive-search">Adaptive Search</h2>
+
+  <p>The agent finds sources dynamically based on part number presence in content -- no dependency on hardcoded domain lists.</p>
+
+  <ul>
+    <li><strong>Dynamic source discovery:</strong> DuckDuckGo results are scored by whether the manufacturer part number actually appears in the page content. The best page wins regardless of domain.</li>
+    <li><strong>No hardcoded domains:</strong> Works for any manufacturer at scale (30K+ parts) without maintaining a list of trusted sites. New distributors and niche suppliers are discovered automatically.</li>
+    <li><strong>Part number verification:</strong> Pages are ranked by a <code>_spec_score()</code> function that checks for the presence of the searched part number, specification tables, and technical content.</li>
+    <li><strong>URL cache as learned knowledge:</strong> Once a good source is found, it is cached for 30 days. Subsequent runs skip search entirely for cached parts, and bad entries are evicted automatically.</li>
+  </ul>
+
+  <p>This approach scales to any industry vertical -- fasteners, bearings, electronics, semiconductor equipment -- without per-domain configuration.</p>
 
   <h2 id="benchmarks">Benchmark Results (44 parts)</h2>
 

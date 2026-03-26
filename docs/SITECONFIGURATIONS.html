@@ -184,21 +184,35 @@ venv\Scripts\activate        # Windows
   </div>
 
   <div class="collapsible">
-    <div class="collapsible-header" onclick="toggleCollapsible(this)">Azure OpenAI (enterprise)</div>
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Azure + GPT (enterprise)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
       <div class="env-block">
         <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">azure_openai</span><br>
         <span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_azure_api_key</span><br>
         <span class="env-key">AZURE_OPENAI_ENDPOINT</span>=<span class="env-val">https://your-resource.openai.azure.com/</span><br>
         <span class="env-key">AZURE_OPENAI_API_VERSION</span>=<span class="env-val">2024-12-01-preview</span><br>
-        <span class="env-key">AZURE_OPENAI_DEPLOYMENT</span>=<span class="env-val">your-deployment-name</span>
+        <span class="env-comment"># AZURE_OPENAI_DEPLOYMENT is optional -- defaults to model name</span>
       </div>
       <p>Get access: <a href="https://portal.azure.com" target="_blank">portal.azure.com</a></p>
     </div></div>
   </div>
 
   <div class="collapsible">
-    <div class="collapsible-header" onclick="toggleCollapsible(this)">AWS Bedrock (enterprise)</div>
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Azure + Claude (enterprise -- same provider!)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">azure_openai</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_azure_api_key</span><br>
+        <span class="env-key">AZURE_OPENAI_ENDPOINT</span>=<span class="env-val">https://your-resource.openai.azure.com/</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">claude-sonnet-4-20250514</span><br>
+        <span class="env-comment"># AZURE_OPENAI_DEPLOYMENT is optional -- defaults to model name</span>
+      </div>
+      <p>Uses the same <code>azure_openai</code> provider -- set <code>LLM_MODEL</code> to a Claude model name. Azure routes to the correct backend.</p>
+    </div></div>
+  </div>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">AWS Bedrock -- native (enterprise)</div>
     <div class="collapsible-body"><div class="collapsible-inner">
       <div class="env-block">
         <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">bedrock</span><br>
@@ -208,6 +222,19 @@ venv\Scripts\activate        # Windows
         <span class="env-key">AWS_SECRET_ACCESS_KEY</span>=<span class="env-val">your_secret_key</span>
       </div>
       <p>No API key needed -- uses default AWS credential chain (env vars, <code>~/.aws/credentials</code>, IAM role).</p>
+    </div></div>
+  </div>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">AWS Bedrock -- proxy (OpenAI-compatible)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">bedrock_openai</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_proxy_api_key</span><br>
+        <span class="env-key">LLM_BASE_URL</span>=<span class="env-val">https://your-bedrock-proxy.example.com/v1</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">anthropic.claude-sonnet-4-20250514-v1:0</span>
+      </div>
+      <p>For OpenAI-compatible proxy services that front AWS Bedrock (e.g., LiteLLM, custom gateways). Uses the standard OpenAI SDK under the hood.</p>
     </div></div>
   </div>
 
@@ -345,13 +372,13 @@ python main_cc.py --workers 8    # 8 workers (faster)</pre>
 
   <table>
     <tr><th>Variable</th><th>Required</th><th>Description</th></tr>
-    <tr><td><code>LLM_PROVIDER</code></td><td>Yes (API mode)</td><td>groq, openai, anthropic, azure_openai, bedrock, ollama, custom</td></tr>
-    <tr><td><code>LLM_API_KEY</code></td><td>Yes*</td><td>Provider API key (*not needed for Ollama/Bedrock)</td></tr>
-    <tr><td><code>LLM_MODEL</code></td><td>No</td><td>Override default model</td></tr>
-    <tr><td><code>LLM_BASE_URL</code></td><td>No</td><td>Custom endpoint (custom provider only)</td></tr>
+    <tr><td><code>LLM_PROVIDER</code></td><td>Yes (API mode)</td><td>groq, openai, anthropic, azure_openai, bedrock, bedrock_openai, ollama, custom</td></tr>
+    <tr><td><code>LLM_API_KEY</code></td><td>Yes*</td><td>Provider API key (*not needed for Ollama/Bedrock native)</td></tr>
+    <tr><td><code>LLM_MODEL</code></td><td>No</td><td>Override default model (required for Azure + Claude)</td></tr>
+    <tr><td><code>LLM_BASE_URL</code></td><td>No</td><td>Custom endpoint (custom and bedrock_openai providers)</td></tr>
     <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Azure only</td><td>Azure resource endpoint</td></tr>
     <tr><td><code>AZURE_OPENAI_API_VERSION</code></td><td>No</td><td>API version (default: 2024-12-01-preview)</td></tr>
-    <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>No</td><td>Deployment name</td></tr>
+    <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>No</td><td>Deployment name (optional, defaults to model name)</td></tr>
     <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td>No</td><td>AWS access key (Bedrock)</td></tr>
     <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td>No</td><td>AWS secret key (Bedrock)</td></tr>
     <tr><td><code>AWS_REGION</code></td><td>No</td><td>AWS region (default: us-east-1)</td></tr>
