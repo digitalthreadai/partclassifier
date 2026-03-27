@@ -42,6 +42,7 @@ Configuration (environment variables):
 """
 
 import os
+import re
 
 # SSL verification — configurable via .env (default: enabled)
 _SSL_VERIFY = os.getenv("SSL_VERIFY", "true").lower() not in ("false", "0", "no")
@@ -176,11 +177,16 @@ class LLMClient:
             self._init_azure_openai()
         elif self.provider == "azure_foundry":
             # Azure AI Foundry — auto-detect Anthropic-native vs OpenAI-compatible
+            # Support multiple env var names for flexibility
+            foundry_resource = os.getenv("AZURE_FOUNDRY_RESOURCE", "").strip()
             foundry_endpoint = (
                 os.getenv("AZURE_FOUNDRY_ENDPOINT", "").strip()
                 or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
                 or self._base_url
             )
+            # If resource name provided, construct endpoint
+            if foundry_resource and not foundry_endpoint:
+                foundry_endpoint = f"https://{foundry_resource}.services.ai.azure.com/anthropic/v1"
             if not foundry_endpoint:
                 raise ValueError(
                     "Set AZURE_FOUNDRY_ENDPOINT or AZURE_OPENAI_ENDPOINT "
@@ -314,31 +320,43 @@ class LLMClient:
         self._client = AsyncAnthropicBedrock(aws_region=region)
         self._is_anthropic = True  # Bedrock uses the same Anthropic message format
 
-    def _init_azure_foundry_anthropic(self, base_url: str):
-        """Initialize for Azure AI Foundry with native Anthropic Messages API."""
+    def _init_azure_foundry_anthropic(self, endpoint: str):
+        """Initialize for Azure AI Foundry using official AnthropicFoundry SDK."""
         try:
-            from anthropic import AsyncAnthropic
+            from anthropic import AsyncAnthropicFoundry
         except ImportError:
             raise ImportError(
-                "The 'anthropic' package is required for Azure AI Foundry with Claude. "
-                "Install it with: pip install anthropic"
+                "The 'anthropic' package >= 0.40.0 is required for Azure AI Foundry. "
+                "Install/upgrade: pip install -U anthropic"
             )
 
         if not self.model:
             self.model = PROVIDER_PRESETS["azure_foundry"]["default_model"]
 
-        # Azure AI Foundry uses 'api-key' header (Microsoft convention)
-        # instead of 'x-api-key' (Anthropic convention)
-        client_kwargs = dict(
-            base_url=base_url,
-            api_key=self.api_key,
-            default_headers={"api-key": self.api_key},
-        )
+        # Extract resource name from endpoint URL if full URL provided
+        # e.g., https://my-resource.services.ai.azure.com/anthropic/v1/messages
+        #   → resource = "my-resource"
+        resource_match = re.match(r"https://([^.]+)\.services\.ai\.azure\.com", endpoint)
+
+        client_kwargs = dict(api_key=self.api_key)
+
+        if resource_match:
+            # Use resource name — SDK constructs the correct URL
+            client_kwargs["resource"] = resource_match.group(1)
+        else:
+            # Fallback: pass full URL as base_url
+            base = endpoint.rstrip("/")
+            if base.endswith("/messages"):
+                base = base[:-len("/messages")]
+            if "/anthropic/" in base and not base.endswith("/anthropic"):
+                base = base[:base.index("/anthropic/") + len("/anthropic")]
+            client_kwargs["base_url"] = base
+
         if not _SSL_VERIFY:
             import httpx
             client_kwargs["http_client"] = httpx.AsyncClient(verify=False)
 
-        self._client = AsyncAnthropic(**client_kwargs)
+        self._client = AsyncAnthropicFoundry(**client_kwargs)
         self._is_anthropic = True  # Routes to _chat_anthropic() → messages.create()
 
     async def chat(self, messages: list[dict], max_tokens: int = 1000,
