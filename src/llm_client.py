@@ -244,8 +244,11 @@ class LLMClient:
                 "Example: https://your-resource.openai.azure.com/"
             )
 
-        if not self.model:
-            self.model = deployment or PROVIDER_PRESETS["azure_openai"]["default_model"]
+        # Azure routes by deployment name — when set, use it as the model parameter
+        if deployment:
+            self.model = deployment
+        elif not self.model:
+            self.model = PROVIDER_PRESETS["azure_openai"]["default_model"]
 
         azure_kwargs = dict(
             azure_endpoint=endpoint,
@@ -299,7 +302,19 @@ class LLMClient:
         kwargs = dict(model=self.model, max_tokens=max_tokens, messages=messages)
         if temperature is not None:
             kwargs["temperature"] = temperature
-        response = await self._client.chat.completions.create(**kwargs)
+        try:
+            response = await self._client.chat.completions.create(**kwargs)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "unknown_model" in err_str or "unknown model" in err_str:
+                raise ValueError(
+                    f"Endpoint rejected model '{self.model}'. "
+                    f"For Azure: set AZURE_OPENAI_DEPLOYMENT to your deployment name "
+                    f"(run: curl YOUR_ENDPOINT/openai/models?api-version=2024-12-01-preview "
+                    f"-H 'api-key: YOUR_KEY' to list available models). "
+                    f"For proxies: check what model names your gateway accepts."
+                ) from e
+            raise
         return response.choices[0].message.content.strip()
 
     async def _chat_anthropic(self, messages: list[dict], max_tokens: int,
