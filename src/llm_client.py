@@ -88,6 +88,16 @@ PROVIDER_PRESETS = {
     },
     # NOTE: azure_anthropic removed — use azure_openai for Claude on Azure
     # (Azure wraps Claude in OpenAI Chat Completions format, same as GPT)
+    "azure_foundry": {
+        "base_url": None,  # set via AZURE_FOUNDRY_ENDPOINT or LLM_BASE_URL
+        "default_model": "claude-sonnet-4-20250514",
+        "label": "Azure AI Foundry",
+        "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514",
+                    "gpt-4o", "gpt-4o-mini"],
+        "needs_key": True,
+        "key_hint": "Azure AI Foundry API key",
+        "key_url": "https://ai.azure.com",
+    },
     "bedrock": {
         "base_url": None,
         "default_model": "anthropic.claude-sonnet-4-20250514-v1:0",
@@ -164,6 +174,25 @@ class LLMClient:
             self._init_anthropic()
         elif self.provider == "azure_openai":
             self._init_azure_openai()
+        elif self.provider == "azure_foundry":
+            # Azure AI Foundry — standard OpenAI SDK with custom base_url
+            # Check multiple env vars for endpoint (users may set any of these)
+            foundry_endpoint = (
+                os.getenv("AZURE_FOUNDRY_ENDPOINT", "").strip()
+                or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()  # common mistake / migration
+            )
+            if foundry_endpoint and not self._base_url:
+                # Auto-construct base_url: append /openai/v1 if not already present
+                base = foundry_endpoint.rstrip("/")
+                if not base.endswith("/v1") and not base.endswith("/openai/v1"):
+                    base += "/openai/v1"
+                self._base_url = base
+            if not self._base_url:
+                raise ValueError(
+                    "Set AZURE_FOUNDRY_ENDPOINT (e.g., https://your-resource.services.ai.azure.com) "
+                    "or LLM_BASE_URL when LLM_PROVIDER=azure_foundry."
+                )
+            self._init_openai_compat()
         elif self.provider == "bedrock":
             self._init_bedrock()
         elif self.provider == "bedrock_openai":
@@ -182,7 +211,7 @@ class LLMClient:
         """Initialize for any OpenAI-compatible provider (Groq, OpenAI, Ollama, proxies)."""
         from openai import AsyncOpenAI
 
-        if self.provider in ("custom", "bedrock_openai"):
+        if self.provider in ("custom", "bedrock_openai", "azure_foundry"):
             if not self._base_url:
                 raise ValueError(f"LLM_BASE_URL must be set when LLM_PROVIDER={self.provider}")
             base_url = self._base_url
