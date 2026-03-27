@@ -179,18 +179,17 @@ class LLMClient:
             # Check multiple env vars for endpoint (users may set any of these)
             foundry_endpoint = (
                 os.getenv("AZURE_FOUNDRY_ENDPOINT", "").strip()
-                or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()  # common mistake / migration
+                or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
             )
             if foundry_endpoint and not self._base_url:
-                # Auto-construct base_url: append /openai/v1 if not already present
-                base = foundry_endpoint.rstrip("/")
-                if not base.endswith("/v1") and not base.endswith("/openai/v1"):
-                    base += "/openai/v1"
-                self._base_url = base
+                # Use endpoint as-is — don't auto-append paths since Foundry
+                # endpoints vary by organization (some use /openai/v1, others don't)
+                self._base_url = foundry_endpoint.rstrip("/")
             if not self._base_url:
                 raise ValueError(
-                    "Set AZURE_FOUNDRY_ENDPOINT (e.g., https://your-resource.services.ai.azure.com) "
-                    "or LLM_BASE_URL when LLM_PROVIDER=azure_foundry."
+                    "Set AZURE_FOUNDRY_ENDPOINT or AZURE_OPENAI_ENDPOINT to your Foundry URL "
+                    "(e.g., https://your-resource.services.ai.azure.com/v1) "
+                    "or set LLM_BASE_URL directly when LLM_PROVIDER=azure_foundry."
                 )
             self._init_openai_compat()
         elif self.provider == "bedrock":
