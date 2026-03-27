@@ -327,9 +327,12 @@ class LLMClient:
         if not self.model:
             self.model = PROVIDER_PRESETS["azure_foundry"]["default_model"]
 
+        # Azure AI Foundry uses 'api-key' header (Microsoft convention)
+        # instead of 'x-api-key' (Anthropic convention)
         client_kwargs = dict(
             base_url=base_url,
             api_key=self.api_key,
+            default_headers={"api-key": self.api_key},
         )
         if not _SSL_VERIFY:
             import httpx
