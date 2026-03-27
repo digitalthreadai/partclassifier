@@ -3,10 +3,29 @@ Read parts from the input Excel file.
 Write one output Excel file per part class into the output/ folder.
 """
 
+import re
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from pathlib import Path
 from typing import Any
+
+
+def _clean_header(h) -> str:
+    """Remove invisible chars, BOM, non-breaking spaces from Excel headers.
+
+    PLM/ERP exports often embed invisible characters in cell values.
+    """
+    if not h:
+        return ""
+    s = str(h)
+    # Remove BOM, zero-width chars, non-breaking spaces
+    s = s.replace('\ufeff', '').replace('\u200b', '').replace('\u200c', '')
+    s = s.replace('\u200d', '').replace('\u00a0', ' ').replace('\ufffe', '')
+    # Remove other control characters (except newline/tab)
+    s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', s)
+    # Collapse multiple spaces
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
 
 INPUT_COLUMNS = [
     "Part Number",
@@ -19,7 +38,8 @@ INPUT_COLUMNS = [
 # Fuzzy aliases for input column headers — handles different naming conventions
 COLUMN_ALIASES = {
     "Part Number": ["PN", "Internal PN", "Item Number", "Item No", "Part No", "Part #"],
-    "Part Name": ["Description", "Part Description", "Name", "Item Name", "Item Description"],
+    "Part Name": ["Description", "Part Description", "Part Desc", "Name", "Item Name",
+                   "Item Description", "Part Title", "Component Name", "Component Description"],
     "Manufacturer Part Number": ["Mfg Part Number", "MFG PN", "Mfg PN", "MPN",
                                   "Manufacturer PN", "Mfg Part No", "Mfr Part Number",
                                   "Mfr PN", "Vendor Part Number", "Vendor PN"],
@@ -51,8 +71,8 @@ class ExcelHandler:
         wb = openpyxl.load_workbook(self.input_path)
         ws = wb.active
         raw_headers = [cell.value for cell in ws[1]]
-        # Strip whitespace from headers
-        headers = [str(h).strip() if h else "" for h in raw_headers]
+        # Clean headers: remove invisible chars, BOM, collapse spaces
+        headers = [_clean_header(h) for h in raw_headers]
         headers_lower = [h.lower() for h in headers]
 
         input_indices: dict[str, int] = {}
@@ -90,8 +110,18 @@ class ExcelHandler:
                     if col in input_indices:
                         break
 
+        # Debug: show column matching results
+        for col in INPUT_COLUMNS:
+            if col in input_indices:
+                idx = input_indices[col]
+                raw = raw_headers[idx] if idx < len(raw_headers) else "?"
+                if str(raw).strip() != col:
+                    print(f"  Column: '{raw}' -> {col}")
+            else:
+                print(f"  WARNING: '{col}' not found. Headers: {headers}")
+
         if not input_indices:
-            print(f"  WARNING: No matching columns found. Headers: {headers}")
+            print(f"  WARNING: No matching columns found. Raw headers: {raw_headers}")
 
         parts = []
         for row in ws.iter_rows(min_row=2, values_only=True):
