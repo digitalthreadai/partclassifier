@@ -175,23 +175,29 @@ class LLMClient:
         elif self.provider == "azure_openai":
             self._init_azure_openai()
         elif self.provider == "azure_foundry":
-            # Azure AI Foundry — standard OpenAI SDK with custom base_url
-            # Check multiple env vars for endpoint (users may set any of these)
+            # Azure AI Foundry — auto-detect Anthropic-native vs OpenAI-compatible
             foundry_endpoint = (
                 os.getenv("AZURE_FOUNDRY_ENDPOINT", "").strip()
                 or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+                or self._base_url
             )
-            if foundry_endpoint and not self._base_url:
-                # Use endpoint as-is — don't auto-append paths since Foundry
-                # endpoints vary by organization (some use /openai/v1, others don't)
-                self._base_url = foundry_endpoint.rstrip("/")
-            if not self._base_url:
+            if not foundry_endpoint:
                 raise ValueError(
-                    "Set AZURE_FOUNDRY_ENDPOINT or AZURE_OPENAI_ENDPOINT to your Foundry URL "
-                    "(e.g., https://your-resource.services.ai.azure.com/v1) "
-                    "or set LLM_BASE_URL directly when LLM_PROVIDER=azure_foundry."
+                    "Set AZURE_FOUNDRY_ENDPOINT or AZURE_OPENAI_ENDPOINT "
+                    "(e.g., https://your-resource.services.ai.azure.com/anthropic/v1) "
+                    "when LLM_PROVIDER=azure_foundry."
                 )
-            self._init_openai_compat()
+            # Auto-detect: if endpoint contains /anthropic/, use Anthropic SDK
+            if "/anthropic/" in foundry_endpoint.lower():
+                base = foundry_endpoint.rstrip("/")
+                # Strip /messages suffix — Anthropic SDK appends it automatically
+                if base.endswith("/messages"):
+                    base = base[:-len("/messages")]
+                self._init_azure_foundry_anthropic(base)
+            else:
+                # OpenAI-compatible (for GPT models on Foundry)
+                self._base_url = foundry_endpoint.rstrip("/")
+                self._init_openai_compat()
         elif self.provider == "bedrock":
             self._init_bedrock()
         elif self.provider == "bedrock_openai":
@@ -307,6 +313,30 @@ class LLMClient:
 
         self._client = AsyncAnthropicBedrock(aws_region=region)
         self._is_anthropic = True  # Bedrock uses the same Anthropic message format
+
+    def _init_azure_foundry_anthropic(self, base_url: str):
+        """Initialize for Azure AI Foundry with native Anthropic Messages API."""
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError:
+            raise ImportError(
+                "The 'anthropic' package is required for Azure AI Foundry with Claude. "
+                "Install it with: pip install anthropic"
+            )
+
+        if not self.model:
+            self.model = PROVIDER_PRESETS["azure_foundry"]["default_model"]
+
+        client_kwargs = dict(
+            base_url=base_url,
+            api_key=self.api_key,
+        )
+        if not _SSL_VERIFY:
+            import httpx
+            client_kwargs["http_client"] = httpx.AsyncClient(verify=False)
+
+        self._client = AsyncAnthropic(**client_kwargs)
+        self._is_anthropic = True  # Routes to _chat_anthropic() → messages.create()
 
     async def chat(self, messages: list[dict], max_tokens: int = 1000,
                    temperature: float | None = None) -> str:
