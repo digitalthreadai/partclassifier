@@ -91,7 +91,7 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         classes_data = json.load(f)
 
     # Flatten the class tree, computing inherited attributes
-    _flatten_tree(classes_data["classes"], inherited_attrs=[], attr_name_by_id=attr_name_by_id)
+    _flatten_tree(classes_data.get("tree", classes_data.get("classes", [])), inherited_attrs=[], attr_name_by_id=attr_name_by_id)
 
     # Build default schema from common attributes
     _DEFAULT_SCHEMA = [
