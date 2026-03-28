@@ -6,7 +6,7 @@ PartClassifier is a production-grade AI agent for mechanical part classification
 
 The agent combines deterministic pattern matching, regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs, stealth web scraping, and intelligent caching -- to process thousands of parts with minimal human intervention. A six-step pipeline ensures maximum accuracy: multi-tier search, deterministic classification from web content (95% accuracy), regex pre-extraction, LLM validation with hybrid prompts (priority schema hints + maximize coverage), canonical normalization via 500+ alias mappings, and per-class Excel output with TC Class ID mapping. A JSON-based schema (`Classes.json` + `Attributes.json`) provides Teamcenter-compatible hierarchical class trees with attribute inheritance and LOV normalization, importable from Teamcenter PLMXML exports via the included `plmxml_to_json.py` converter.
 
-**Key stats:** 7,031 LOC across 18 modules, 8 LLM providers, 3 distributor APIs, 93 part classes, 46 attributes, JSON-based Teamcenter-compatible schema with attribute inheritance and LOV normalization, PLMXML import converter, 21 production-ready bug fixes.
+**Key stats:** 7,031 LOC across 18 modules, 9 LLM providers, 3 distributor APIs, 93 part classes, 46 attributes, JSON-based Teamcenter-compatible schema with attribute inheritance and LOV normalization, configurable aliases.json system, PLMXML import converter with DictionaryAttribute + KeyLOV support, 21 production-ready bug fixes.
 
 ## Competitive Landscape
 
@@ -15,7 +15,7 @@ The agent combines deterministic pattern matching, regex pre-extraction, and LLM
 | Manual lookup | Accurate, human-verified | Extremely slow (2-5 min/part), doesn't scale |
 | Generic web scrapers | Fast, programmable | Blocked by bot detection, no part intelligence |
 | PLM vendor tools | Integrated with Teamcenter | Expensive licensing, limited to vendor catalog |
-| **PartClassifier** | AI-driven, multi-source, self-classifying, 93 part classes, 8 LLM providers, PLMXML import | Requires initial setup, LLM costs for large batches |
+| **PartClassifier** | AI-driven, multi-source, self-classifying, 93 part classes, 9 LLM providers, PLMXML import, configurable aliases.json | Requires initial setup, LLM costs for large batches |
 
 ## Benchmark Results (44 parts)
 
@@ -121,19 +121,27 @@ Input Excel
 - JSON-based schema (primary): `input/Classes.json` (93 classes, hierarchical tree with Teamcenter classids) + `input/Attributes.json` (46 attributes with 5-digit numeric IDs, LOV values, ranges)
 - Attribute inheritance: child classes automatically inherit all ancestor attributes
 - LOV normalization: extracted values matched to Teamcenter LOV entries (e.g., "Stainless Steel" -> "StainlessSteel")
-- Fallback chain: JSON -> Excel (`ClassificationSchema.xlsx`) -> hardcoded defaults
-- 500+ alias mappings normalize different naming conventions (e.g., "Screw Size", "Thread Size", "For Screw Size" all map to "Screw Size")
-- DigiKey/Mouser API parameter names included in alias mappings
+- Schema load priority: JSON → aliases.json (wins on conflict) → Excel (`ClassificationSchema.xlsx`) → hardcoded defaults
+- **`input/aliases.json`** (configurable, human-editable): three sections loaded at startup:
+  - `attribute_aliases`: canonical name → [alternate names, abbreviations] (e.g., "Inner Diameter" → ["ID", "I.D.", "Bore", "Bore Diameter"])
+  - `class_aliases`: canonical class → [alternate class names]
+  - `class_attribute_overrides`: context-aware per-class mapping (e.g., "size" = "Thread Size" for Bolt, "Outer Diameter" for Washer)
+- `shortname` field from Attributes.json auto-loaded as alias (e.g., shortname "ID" → "Inner Diameter" without any manual config)
+- Token-based fuzzy matching fallback: multi-word alias subsets matched against raw LLM keys
+- TC Class ID resolved from `classificationId` field (falls back to `id`, then `classid`)
+- 500+ alias mappings including DigiKey/Mouser API parameter names
 - Default schema for classes without specific definitions
-- Fuzzy schema matching for partial class name matches
 
 #### 8. Per-Class Excel Output
 - **Entry:** `src/excel_handler.py`
 - Groups parts by classified type
 - Writes one `.xlsx` per class with consistent column headers
-- TC Class ID column for Teamcenter integration
-- Styled headers (blue fill, white bold), auto-sized columns
-- Preserves original input columns + Part Class + Source URL + extracted attributes
+- TC Class ID column (resolved from `classificationId` in Classes.json)
+- **Color-coded headers:** TC-configured attributes (navy blue) appear first, followed by LLM-extracted additional attributes (gray-purple) — makes TC schema vs agent-discovered data immediately visible
+- Attribute columns ordered: TC inherited attrs first (from parent + child classes), then agent-extracted extras
+- Classes not found in TC hierarchy get `-NotInTc` filename suffix
+- Styled headers, auto-sized columns
+- Preserves original input columns + Part Class + Source URL
 
 ### Execution Modes
 
@@ -231,11 +239,23 @@ Input Excel
 #### 21. PLMXML to JSON Converter
 - **Entry:** `plmxml_to_json.py`
 - Standalone script to convert Teamcenter PLMXML exports to JSON schema files (`Classes.json` + `Attributes.json`)
-- Parses `<AdminClass>` tags with classid, name, parent, attributeslist
+- Parses `<AdminClass>` and `<DictionaryAttribute>` tags (namespace-agnostic after stripping)
+- `<DictionaryAttribute>` support: reads name from child `<Name>` element, resolves `keyLOVId` from `Format > FormatKeyLOV` against separately-parsed `<KeyLOV>` sections
+- `<KeyLOV>` parsing handles both inline format (Name child + Key/Value sibling pairs) and legacy format
 - Reconstructs flat class list into hierarchical tree via parent->classid mapping
-- Resolves attribute->format->KeyLOV chain for LOV values and ranges
+- Resolves attribute→format→KeyLOV chain for LOV values and ranges; outputs `lovName` field
+- Indexes KeyLOV by both `id` and `keyLOVId` for flexible ref resolution
 - CLI modes: `--plmxml` (mandatory), `--sml` (optional), `--output`, `--dry-run`, `--merge`, `--demo`
 - Zero external dependencies (stdlib only)
+
+#### 22. LLM Alias Generator
+- **Entry:** `generate_aliases.py`
+- Reads `input/Classes.json` + `input/Attributes.json`, uses the configured LLM (same `.env` as `main.py`) to auto-generate `input/aliases.json`
+- Three batched LLM passes (12 items/call): attribute aliases, class aliases, class attribute overrides
+- `--merge` flag: fills only empty entries, preserving manual edits
+- `--dry-run`: preview without writing
+- Retry logic (3 attempts, 3s backoff) for rate-limited providers
+- Designed as a one-time setup step before running the main classifier
 
 ## Tech Stack
 
@@ -252,17 +272,19 @@ Input Excel
 | Web UI | Streamlit | >= 1.38.0 |
 | Env Config | python-dotenv | >= 1.0.0 |
 
-## LLM Providers (8)
+## LLM Providers (9)
 
 | Provider | Default Model | API Key Required | Notes |
 |----------|--------------|------------------|-------|
 | Groq | llama-3.3-70b-versatile | Yes (free) | Fastest inference, recommended to start |
 | OpenAI | gpt-4o | Yes | GPT-4o, GPT-4-turbo, GPT-3.5-turbo |
 | Anthropic | claude-sonnet-4-20250514 | Yes | Claude Opus, Sonnet, Haiku |
-| Azure OpenAI | gpt-4o | Yes | Enterprise, requires AZURE_OPENAI_ENDPOINT |
+| Azure OpenAI | gpt-4o | Yes | Enterprise GPT or Claude (same provider key); requires AZURE_OPENAI_ENDPOINT |
+| Azure AI Foundry | claude-sonnet-4-20250514 | Yes | Claude via Azure AI Foundry; uses AnthropicFoundry SDK; requires LLM_BASE_URL |
 | AWS Bedrock | anthropic.claude-sonnet-4-20250514-v1:0 | No (AWS creds) | Uses default AWS credential chain |
+| AWS Bedrock (proxy) | claude-sonnet-4-20250514-v1:0 | Yes | OpenAI-compatible proxy; requires LLM_BASE_URL |
 | Ollama | llama3.1 | No | Local inference, free, requires ollama serve |
-| Custom | gpt-4o | Varies | Any OpenAI-compatible endpoint via LLM_BASE_URL |
+| Custom | (configured) | Varies | Any OpenAI-compatible endpoint via LLM_BASE_URL |
 | Claude Code CLI | (any backend) | No | Uses `claude` CLI on PATH, zero API keys |
 
 ## Roadmap
@@ -277,6 +299,7 @@ Input Excel
 | v1.5 | Deterministic classification, regex pre-extraction, LLM cache, metrics | Done |
 | v1.6 | Excel-based schema (81 classes), TC Class ID, hybrid prompts, 8th provider | Done |
 | v1.7 | JSON schema (93 classes), PLMXML converter, attribute inheritance, LOV normalization, adaptive search, fuzzy column matching | Done |
+| v1.8 | Azure AI Foundry provider, DictionaryAttribute + KeyLOV PLMXML parsing, aliases.json configurable system, generate_aliases.py LLM generator, color-coded Excel output, classificationId TC Class ID, shortname auto-alias, fuzzy attr matching, class-aware attribute overrides | Done |
 | v2.0 | Teamcenter direct import, additional part classes | Planned |
 
 ## File Structure
@@ -286,7 +309,8 @@ PartClassifier/
 ├── main.py                    # API key mode CLI entry point
 ├── main_cc.py                 # Claude Code CLI mode entry point (zero-key)
 ├── app.py                     # Streamlit web UI
-├── plmxml_to_json.py          # PLMXML → JSON converter (Teamcenter export → Classes/Attributes JSON)
+├── plmxml_to_json.py          # PLMXML → JSON converter (AdminClass + DictionaryAttribute + KeyLOV)
+├── generate_aliases.py        # LLM alias generator → input/aliases.json (Step 1 of setup)
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template
 ├── .env                       # Runtime config (git-ignored)
@@ -300,6 +324,7 @@ PartClassifier/
 ├── input/
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree, Teamcenter classids
 │   ├── Attributes.json                # JSON schema: 46 attributes, numeric IDs, LOV values, ranges
+│   ├── aliases.json                   # Configurable aliases: attr_aliases, class_aliases, class_attr_overrides
 │   ├── PartClassifierInput.xlsx       # Sample input (4 parts)
 │   └── ClassificationSchema.xlsx      # Excel-based schema fallback (81 classes, 46 attrs, 169 aliases)
 ├── output/                    # Generated Excel files (git-ignored)
@@ -321,7 +346,7 @@ PartClassifier/
     ├── class_extractor.py     # Deterministic class from web content (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # JSON/Excel schema loader (93 classes, 500+ aliases, LOV normalization)
+    ├── attr_schema.py         # Schema loader + aliases.json + fuzzy matching + class-aware overrides
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes

@@ -115,7 +115,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
   <div class="mode-cards">
     <div class="mode-card">
       <h4>API Key CLI</h4>
-      <p><code>python main.py</code><br>8 LLM providers via .env configuration</p>
+      <p><code>python main.py</code><br>9 LLM providers via .env configuration</p>
     </div>
     <div class="mode-card">
       <h4>Claude Code CLI</h4>
@@ -164,7 +164,7 @@ python main.py --clear-cache       # delete cache before run</pre>
   <h3>API Key CLI (<code>main.py</code>)</h3>
   <ul>
     <li>Sequential processing with asyncio</li>
-    <li>Configurable LLM provider via <code>.env</code> (8 providers)</li>
+    <li>Configurable LLM provider via <code>.env</code> (9 providers)</li>
     <li>Resume capability via <code>progress.json</code> checkpoint</li>
     <li>Periodic Excel writes every 10 parts</li>
     <li>Retry logic with exponential backoff for timeouts and rate limits</li>
@@ -191,9 +191,9 @@ python main.py --clear-cache       # delete cache before run</pre>
     <li>Auto-writes <code>.env</code> from sidebar configuration</li>
   </ul>
 
-  <h2 id="llm-providers">LLM Providers (8)</h2>
+  <h2 id="llm-providers">LLM Providers (9)</h2>
 
-  <p>9 scenarios across 8 providers:</p>
+  <p>10 scenarios across 9 providers:</p>
 
   <table>
     <tr><th>Scenario</th><th>LLM_PROVIDER</th><th>Required Vars</th><th>Notes</th></tr>
@@ -202,6 +202,7 @@ python main.py --clear-cache       # delete cache before run</pre>
     <tr><td>Anthropic (Claude)</td><td><code>anthropic</code></td><td><code>LLM_API_KEY</code></td><td>Direct Anthropic API</td></tr>
     <tr><td>Azure + GPT</td><td><code>azure_openai</code></td><td><code>LLM_API_KEY</code>, <code>AZURE_OPENAI_ENDPOINT</code></td><td>GPT on Azure</td></tr>
     <tr><td>Azure + Claude</td><td><code>azure_openai</code></td><td><code>LLM_API_KEY</code>, <code>AZURE_OPENAI_ENDPOINT</code>, <code>LLM_MODEL</code></td><td>Claude on Azure (same provider!)</td></tr>
+    <tr><td>Azure AI Foundry</td><td><code>azure_foundry</code></td><td><code>LLM_API_KEY</code>, <code>LLM_BASE_URL</code></td><td>Claude via Azure AI Foundry; AnthropicFoundry SDK</td></tr>
     <tr><td>AWS Bedrock (native)</td><td><code>bedrock</code></td><td><code>AWS_REGION</code> + IAM creds</td><td>No API key needed</td></tr>
     <tr><td>AWS Bedrock (proxy)</td><td><code>bedrock_openai</code></td><td><code>LLM_API_KEY</code>, <code>LLM_BASE_URL</code></td><td>OpenAI-compatible proxy</td></tr>
     <tr><td>Local (Ollama)</td><td><code>ollama</code></td><td>(none)</td><td>Free, offline</td></tr>
@@ -356,7 +357,7 @@ python plmxml_to_json.py --demo                             # generate sample ou
 ├── app.py                     # Streamlit web UI
 ├── plmxml_to_json.py          # PLMXML → JSON converter
 ├── requirements.txt           # Python dependencies
-├── .env.example               # Configuration template (8 providers)
+├── .env.example               # Configuration template (9 providers)
 ├── url_cache.json             # URL cache (30-day TTL, shared)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
@@ -368,7 +369,7 @@ python plmxml_to_json.py --demo                             # generate sample ou
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
-    ├── llm_client.py          # Unified async LLM client (8 providers)
+    ├── llm_client.py          # Unified async LLM client (9 providers)
     ├── claude_code_client.py  # Claude CLI wrapper (batch + parallel)
     ├── part_classifier.py     # LLM classification + batch (100/call)
     ├── web_scraper.py         # 7-tier content lookup with URL caching

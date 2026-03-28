@@ -132,7 +132,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <tr><td>Manual lookup</td><td>Accurate, human-verified</td><td>Extremely slow (2-5 min/part)</td></tr>
     <tr><td>Generic web scrapers</td><td>Fast, programmable</td><td>Blocked by bot detection</td></tr>
     <tr><td>PLM vendor tools</td><td>Integrated with Teamcenter</td><td>Expensive licensing</td></tr>
-    <tr><td><strong>PartClassifier</strong></td><td>AI-driven, multi-source, 93 classes, 8 LLM providers, TC Class ID, PLMXML import</td><td>Requires setup, LLM costs for large batches</td></tr>
+    <tr><td><strong>PartClassifier</strong></td><td>AI-driven, multi-source, 93 classes, 9 LLM providers, aliases.json, color-coded Excel, PLMXML+DictionaryAttribute import</td><td>Requires setup, LLM costs for large batches</td></tr>
   </table>
 
   <h2 id="benchmarks">Benchmark Results (44 parts)</h2>
@@ -230,7 +230,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <div class="collapsible-body"><div class="collapsible-inner">
       <ul>
         <li>Sequential processing with asyncio</li>
-        <li>8 LLM providers via <code>.env</code></li>
+        <li>9 LLM providers via <code>.env</code></li>
         <li>Resume via <code>progress.json</code> checkpoint after each part</li>
         <li>Excel writes every 10 parts</li>
         <li>Retry with exponential backoff for timeouts and rate limits</li>
@@ -333,15 +333,17 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <tr><td>Env Config</td><td>python-dotenv</td><td>&ge; 1.0.0</td></tr>
   </table>
 
-  <h2 id="providers">LLM Providers (8)</h2>
+  <h2 id="providers">LLM Providers (9)</h2>
 
   <table>
     <tr><th>Provider</th><th>Default Model</th><th>Key Required</th><th>Notes</th></tr>
     <tr><td>Groq</td><td>llama-3.3-70b-versatile</td><td>Yes (free)</td><td>Fastest inference</td></tr>
     <tr><td>OpenAI</td><td>gpt-4o</td><td>Yes</td><td>GPT-4o, GPT-4-turbo</td></tr>
     <tr><td>Anthropic</td><td>claude-sonnet-4-20250514</td><td>Yes</td><td>Opus, Sonnet, Haiku</td></tr>
-    <tr><td>Azure OpenAI</td><td>gpt-4o</td><td>Yes</td><td>Enterprise deployment</td></tr>
+    <tr><td>Azure OpenAI</td><td>gpt-4o</td><td>Yes</td><td>Enterprise GPT or Claude via Azure</td></tr>
+    <tr><td>Azure AI Foundry</td><td>claude-sonnet-4-20250514</td><td>Yes</td><td>Claude via Azure AI Foundry; AnthropicFoundry SDK</td></tr>
     <tr><td>AWS Bedrock</td><td>anthropic.claude-sonnet-4-20250514-v1:0</td><td>No (AWS creds)</td><td>Default credential chain</td></tr>
+    <tr><td>AWS Bedrock (proxy)</td><td>claude-sonnet-4-20250514-v1:0</td><td>Yes</td><td>OpenAI-compatible proxy endpoint</td></tr>
     <tr><td>Ollama</td><td>llama3.1</td><td>No</td><td>Local inference, free</td></tr>
     <tr><td>Custom</td><td>(user-defined)</td><td>Varies</td><td>Any OpenAI-compatible API</td></tr>
     <tr><td>Claude Code CLI</td><td>(any backend)</td><td>No</td><td>Zero API keys via CLI</td></tr>
@@ -382,6 +384,10 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <div class="version">v1.7 <span class="tag done">Done</span></div>
       <div class="desc">JSON schema (93 classes), PLMXML converter, attribute inheritance, LOV normalization, adaptive search, fuzzy column matching</div>
     </div>
+    <div class="roadmap-item done">
+      <div class="version">v1.8 <span class="tag done">Done</span></div>
+      <div class="desc">Azure AI Foundry provider, DictionaryAttribute + KeyLOV PLMXML parsing, aliases.json configurable system, generate_aliases.py LLM generator, color-coded Excel output (TC navy / agent gray), classificationId TC Class ID, shortname auto-alias, fuzzy attr matching, class-aware attribute overrides</div>
+    </div>
     <div class="roadmap-item">
       <div class="version">v2.0 <span class="tag planned">Planned</span></div>
       <div class="desc">Teamcenter direct import, additional part classes</div>
@@ -396,7 +402,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 ├── app.py                     # Streamlit web UI
 ├── plmxml_to_json.py          # PLMXML → JSON converter
 ├── requirements.txt           # Python dependencies
-├── .env.example               # Configuration template (8 providers)
+├── .env.example               # Configuration template (9 providers)
 ├── url_cache.json             # URL cache (30-day TTL + bad-entry eviction)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
@@ -408,7 +414,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
-    ├── llm_client.py          # Unified async LLM client (8 providers)
+    ├── llm_client.py          # Unified async LLM client (9 providers)
     ├── claude_code_client.py  # Claude CLI wrapper (batch + parallel)
     ├── part_classifier.py     # LLM classification + batch (100/call)
     ├── web_scraper.py         # 7-tier content lookup with URL caching

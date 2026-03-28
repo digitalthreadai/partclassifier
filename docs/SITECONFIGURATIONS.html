@@ -122,7 +122,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 
 <main class="content" id="top">
   <h1>Setup Guide</h1>
-  <p class="subtitle">Step-by-step configuration for PartClassifier. 8 LLM providers, 3 distributor APIs, stealth browser, JSON-based Teamcenter schema, PLMXML converter.</p>
+  <p class="subtitle">Step-by-step configuration for PartClassifier. 9 LLM providers, 3 distributor APIs, stealth browser, JSON-based Teamcenter schema, PLMXML converter.</p>
 
   <h2 id="python">1. Python Environment</h2>
 
@@ -237,6 +237,19 @@ venv\Scripts\activate        # Windows
         <span class="env-key">LLM_MODEL</span>=<span class="env-val">anthropic.claude-sonnet-4-20250514-v1:0</span>
       </div>
       <p>For OpenAI-compatible proxy services that front AWS Bedrock (e.g., LiteLLM, custom gateways). Uses the standard OpenAI SDK under the hood.</p>
+    </div></div>
+  </div>
+
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">Azure AI Foundry (enterprise Claude)</div>
+    <div class="collapsible-body"><div class="collapsible-inner">
+      <div class="env-block">
+        <span class="env-key">LLM_PROVIDER</span>=<span class="env-val">azure_foundry</span><br>
+        <span class="env-key">LLM_API_KEY</span>=<span class="env-val">your_foundry_api_key</span><br>
+        <span class="env-key">LLM_BASE_URL</span>=<span class="env-val">https://your-resource.services.ai.azure.com/models</span><br>
+        <span class="env-key">LLM_MODEL</span>=<span class="env-val">claude-sonnet-4-20250514</span>
+      </div>
+      <p>Access via <a href="https://portal.azure.com" target="_blank">Azure AI Foundry portal</a>. Uses the AnthropicFoundry SDK internally. Set <code>LLM_BASE_URL</code> to your Foundry endpoint — do not append path suffixes.</p>
     </div></div>
   </div>
 
@@ -379,7 +392,28 @@ python plmxml_to_json.py --plmxml export.xml --output input/ --merge
 # Demo mode (generate sample output):
 python plmxml_to_json.py --demo</pre>
 
-  <p>The converter parses <code>&lt;AdminClass&gt;</code> tags, reconstructs the hierarchical tree, and resolves attribute&rarr;format&rarr;KeyLOV chains. Zero external dependencies (stdlib only).</p>
+  <p>The converter parses <code>&lt;AdminClass&gt;</code> and <code>&lt;DictionaryAttribute&gt;</code> tags (namespace-agnostic), reconstructs the hierarchical tree, and resolves attribute&rarr;format&rarr;KeyLOV chains including inline <code>&lt;KeyLOV&gt;</code> sections with <code>&lt;Key&gt;</code>/<code>&lt;Value&gt;</code> sibling pairs. Zero external dependencies (stdlib only).</p>
+
+  <h3>Alias Configuration (<code>input/aliases.json</code>)</h3>
+
+  <p>Configurable alias mappings that <strong>win on conflict</strong> over all other alias sources. Edit manually or auto-generate using the LLM alias generator:</p>
+
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button># Step 1: Generate aliases.json (uses same .env as main.py)
+python generate_aliases.py
+
+# Fill gaps only, keep manual edits:
+python generate_aliases.py --merge
+
+# Step 2: Run normally — aliases.json loaded automatically
+python main.py</pre>
+
+  <p>The file has three sections:</p>
+  <ul>
+    <li><strong><code>attribute_aliases</code></strong> — canonical name &rarr; [alternate names, abbreviations]. E.g., <code>"Inner Diameter": ["ID", "I.D.", "Bore", "Bore Diameter"]</code></li>
+    <li><strong><code>class_aliases</code></strong> — canonical class &rarr; [alternate class names]. E.g., <code>"Flat Washer": ["flat wshr", "plain washer"]</code></li>
+    <li><strong><code>class_attribute_overrides</code></strong> — context-aware per-class mapping. E.g., <code>"Bolt": {"size": "Thread Size"}</code>, <code>"Washer": {"size": "Outer Diameter"}</code></li>
+  </ul>
+  <p>The <code>shortname</code> field from <code>Attributes.json</code> is automatically loaded as an alias (e.g., shortname <code>"ID"</code> &rarr; <code>"Inner Diameter"</code>) without any manual config.</p>
 
   <h3>Excel-Based Schema (Fallback -- <code>input/ClassificationSchema.xlsx</code>)</h3>
 

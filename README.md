@@ -2,7 +2,7 @@
 
 A production-grade AI agent that reads mechanical parts from Excel, searches distributor APIs and the web for specifications, classifies each part into 93 categories, extracts structured attributes via regex pre-extraction + LLM validation, and writes per-class Excel output files with TC Class ID -- ready for Teamcenter PLM import. Includes a PLMXML-to-JSON converter for importing Teamcenter classification hierarchies.
 
-**7,031 LOC | 18 modules | 8 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases**
+**7,031 LOC | 18 modules | 9 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases | configurable aliases.json**
 
 **Three execution modes:**
 
@@ -132,6 +132,18 @@ To generate JSON schema files from Teamcenter PLMXML exports, use the included c
 python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
 ```
 
+- **`input/aliases.json`** (auto-generated, human-editable) -- configurable alias mappings that override all other sources:
+  - `attribute_aliases`: alternate names/abbreviations per attribute (e.g., "ID", "Bore" → "Inner Diameter")
+  - `class_aliases`: alternate class names
+  - `class_attribute_overrides`: context-aware mapping (e.g., "size" = "Thread Size" for Bolt, "Outer Diameter" for Washer)
+
+Generate `aliases.json` using the LLM alias generator (same `.env` config as `main.py`):
+
+```bash
+python generate_aliases.py          # generate fresh aliases.json
+python generate_aliases.py --merge  # fill gaps, keep manual edits
+```
+
 ### 6. Run
 
 ```bash
@@ -145,7 +157,7 @@ python main_cc.py --workers 8    # Claude Code CLI with 8 parallel workers
 
 ## LLM Configuration
 
-9 scenarios across 8 providers:
+10 scenarios across 9 providers:
 
 | Scenario | LLM_PROVIDER | Required Vars | Notes |
 |----------|-------------|---------------|-------|
@@ -154,6 +166,7 @@ python main_cc.py --workers 8    # Claude Code CLI with 8 parallel workers
 | Anthropic (Claude) | `anthropic` | `LLM_API_KEY` | Direct Anthropic API |
 | Azure + GPT | `azure_openai` | `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT` | GPT on Azure |
 | Azure + Claude | `azure_openai` | `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `LLM_MODEL` | Claude on Azure (same provider!) |
+| Azure AI Foundry | `azure_foundry` | `LLM_API_KEY`, `LLM_BASE_URL` | Claude via Azure AI Foundry; uses AnthropicFoundry SDK |
 | AWS Bedrock (native) | `bedrock` | `AWS_REGION` + IAM creds | No API key needed |
 | AWS Bedrock (proxy) | `bedrock_openai` | `LLM_API_KEY`, `LLM_BASE_URL` | OpenAI-compatible proxy |
 | Local (Ollama) | `ollama` | (none) | Free, offline |

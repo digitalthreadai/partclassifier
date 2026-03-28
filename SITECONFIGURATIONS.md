@@ -34,7 +34,7 @@ CloakBrowser is optional and installed separately (see Section 4).
 
 ---
 
-## 2. LLM Provider Configuration (8 Providers)
+## 2. LLM Provider Configuration (9 Providers)
 
 Copy the example env file and edit:
 
@@ -118,6 +118,18 @@ LLM_API_KEY=your_key
 LLM_BASE_URL=https://your-api-endpoint.com/v1
 LLM_MODEL=your-model-name
 ```
+
+### Azure AI Foundry (enterprise Claude)
+
+```env
+LLM_PROVIDER=azure_foundry
+LLM_API_KEY=your_foundry_api_key
+LLM_BASE_URL=https://your-resource.services.ai.azure.com/models
+LLM_MODEL=claude-sonnet-4-20250514
+```
+
+Access via Azure AI Foundry portal. Uses the `anthropic[bedrock]` SDK internally (AnthropicFoundry client).
+Set `LLM_BASE_URL` to your Foundry endpoint — do not append path suffixes.
 
 ### Claude Code CLI (zero API keys)
 
@@ -355,7 +367,50 @@ python plmxml_to_json.py --plmxml export.xml --output input/ --merge
 python plmxml_to_json.py --demo
 ```
 
-The converter parses `<AdminClass>` tags, reconstructs the hierarchical tree, and resolves attribute->format->KeyLOV chains. Zero external dependencies (stdlib only).
+The converter parses `<AdminClass>` and `<DictionaryAttribute>` tags (namespace-agnostic), reconstructs the hierarchical tree, and resolves attribute→format→KeyLOV chains including inline `<KeyLOV>` sections with `<Key>`/`<Value>` sibling pairs. Zero external dependencies (stdlib only).
+
+### Alias Configuration (`input/aliases.json`)
+
+The alias system maps LLM-extracted attribute names to TC canonical names. `aliases.json` wins over all other alias sources (JSON schema, Excel, hardcoded). Generate it using the LLM alias generator:
+
+```bash
+# Step 1: Generate aliases.json (uses same .env as main.py)
+python generate_aliases.py
+
+# Fill gaps only, keep manual edits:
+python generate_aliases.py --merge
+
+# Preview without writing:
+python generate_aliases.py --dry-run
+```
+
+The file has three sections you can edit manually at any time:
+
+```json
+{
+  "attribute_aliases": {
+    "Inner Diameter": ["ID", "I.D.", "Bore", "Bore Diameter"],
+    "Thread Size":    ["Screw Size", "Nominal Size", "Nominal Diameter"]
+  },
+  "class_aliases": {
+    "Flat Washer": ["flat wshr", "fender washer", "plain washer"]
+  },
+  "class_attribute_overrides": {
+    "Bolt":    {"size": "Thread Size", "dia": "Thread Size"},
+    "Washer":  {"size": "Outer Diameter"}
+  }
+}
+```
+
+The `shortname` field from `Attributes.json` is automatically loaded as an alias (e.g., shortname `"ID"` → `"Inner Diameter"`) without any manual config.
+
+**Step 2:** Run the classifier normally — `aliases.json` is loaded automatically at startup.
+
+```bash
+python main.py
+# or
+python main_cc.py
+```
 
 ### Excel-Based Schema (Fallback -- `input/ClassificationSchema.xlsx`)
 
