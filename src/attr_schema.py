@@ -27,7 +27,7 @@ import json
 import re
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import openpyxl
 
@@ -38,6 +38,7 @@ _INPUT_DIR = Path(__file__).parent.parent / "input"
 _CLASSES_JSON = _INPUT_DIR / "Classes.json"
 _ATTRS_JSON = _INPUT_DIR / "Attributes.json"
 _SCHEMA_XLSX = _INPUT_DIR / "ClassificationSchema.xlsx"
+_ALIASES_JSON = _INPUT_DIR / "aliases.json"
 
 
 # ── Module-level data (populated at import time) ────────────────────────────
@@ -52,6 +53,7 @@ LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values
 ATTR_DICT: dict[str, dict] = {}            # attr id -> full attribute record
 _DEFAULT_SCHEMA: list[str] = []
 _SCHEMA_SOURCE: str = "none"               # "json", "excel", or "hardcoded"
+_CLASS_ATTR_OVERRIDES: dict[str, dict[str, str]] = {}  # class_name_lower -> {raw_key_lower -> canonical}
 
 
 # ── JSON loader ──────────────────────────────────────────────────────────────
@@ -76,9 +78,11 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         # Populate ATTR_DICT
         ATTR_DICT[aid] = attr
 
-        # Populate ALIASES: canonical name + all aliases
+        # Populate ALIASES: canonical name + shortname + all aliases
         canonical = attr["name"]
         ALIASES[canonical.lower()] = canonical
+        if attr.get("shortname"):
+            ALIASES[attr["shortname"].lower()] = canonical
         for alias in attr.get("aliases", []):
             ALIASES[alias.lower()] = canonical
 
@@ -116,7 +120,7 @@ def _flatten_tree(
     """
     for node in nodes:
         name = node["name"]
-        class_id = node.get("id", "")
+        class_id = node.get("classificationId", node.get("id", node.get("classid", "")))
         children = node.get("children", [])
         aliases = node.get("aliases", [])
 
@@ -439,6 +443,55 @@ def _load_schema() -> None:
     # Priority 3: Hardcoded
     _load_hardcoded_defaults()
 
+    # Always load aliases.json last — wins on conflict with all other sources
+    _load_aliases_json()
+
+
+def _load_aliases_json() -> None:
+    """
+    Load input/aliases.json and merge into ALIASES, CLASS_ALIASES, _CLASS_ATTR_OVERRIDES.
+
+    aliases.json wins on conflict with all other alias sources.
+    Schema:
+        attribute_aliases:       { canonical_name: [alias, ...] }
+        class_aliases:           { canonical_class: [alias, ...] }
+        class_attribute_overrides: { class_name: { raw_key: canonical_attr } }
+    """
+    if not _ALIASES_JSON.exists():
+        return
+
+    try:
+        with open(_ALIASES_JSON, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        warnings.warn(f"Failed to load aliases.json ({e}), skipping")
+        return
+
+    attr_names = {a["name"] for a in ATTR_DICT.values()}
+
+    # attribute_aliases: canonical → [aliases]
+    for canonical, aliases in data.get("attribute_aliases", {}).items():
+        if canonical not in attr_names and ATTR_DICT:
+            warnings.warn(f"aliases.json: '{canonical}' not found in Attributes.json — check spelling")
+        ALIASES[canonical.lower()] = canonical
+        for alias in aliases:
+            ALIASES[alias.lower()] = canonical
+
+    # class_aliases: canonical → [aliases]
+    for canonical, aliases in data.get("class_aliases", {}).items():
+        CLASS_ALIASES[canonical.lower()] = canonical
+        for alias in aliases:
+            CLASS_ALIASES[alias.lower()] = canonical
+
+    # class_attribute_overrides: class_name → {raw_key → canonical_attr}
+    for cls_name, overrides in data.get("class_attribute_overrides", {}).items():
+        _CLASS_ATTR_OVERRIDES[cls_name.lower()] = {k.lower(): v for k, v in overrides.items()}
+
+    print(f"[schema] aliases.json loaded: "
+          f"{len(data.get('attribute_aliases', {}))} attr aliases, "
+          f"{len(data.get('class_aliases', {}))} class aliases, "
+          f"{len(data.get('class_attribute_overrides', {}))} class overrides")
+
 
 _load_schema()
 
@@ -564,19 +617,52 @@ def schema_source() -> str:
     return _SCHEMA_SOURCE
 
 
+def _fuzzy_match_attr(raw_key: str) -> Optional[str]:
+    """
+    Word-overlap fallback: all alias tokens must appear in the raw key.
+    Only multi-word aliases are tried (single-word too ambiguous).
+    Returns the canonical name on match, or None.
+    """
+    tokens = set(raw_key.lower().split())
+    best: Optional[str] = None
+    best_score = 0
+    for alias_lower, canonical in ALIASES.items():
+        alias_tokens = set(alias_lower.split())
+        if len(alias_tokens) > 1:
+            overlap = len(tokens & alias_tokens)
+            if overlap == len(alias_tokens) and overlap > best_score:
+                best_score = overlap
+                best = canonical
+    return best
+
+
 def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
     """
-    1. Alias-normalize all keys in `raw`.
+    1. Alias-normalize all keys in `raw` (class overrides → exact alias → fuzzy match).
     2. LOV-normalize values where applicable.
     3. Order them according to the class schema (unknown keys go at the end).
     Returns a plain dict with consistent, canonical keys.
     """
     schema = get_schema(part_class)
 
+    # Build class-aware override lookup for this part_class
+    cls_lower = (part_class or "").lower()
+    cls_overrides: dict[str, str] = {}
+    for k, v in _CLASS_ATTR_OVERRIDES.items():
+        if k in cls_lower or cls_lower in k:
+            cls_overrides.update(v)
+
     # Step 1: normalize keys and LOV values
     normalized: dict[str, str] = {}
     for k, v in raw.items():
-        canonical = ALIASES.get(k.strip().lower(), k.strip())
+        k_lower = k.strip().lower()
+        # Priority: class-aware override → exact alias → fuzzy multi-word → original
+        canonical = (
+            cls_overrides.get(k_lower)
+            or ALIASES.get(k_lower)
+            or _fuzzy_match_attr(k_lower)
+            or k.strip()
+        )
         # Prefer schema-cased version if available
         for schema_key in schema:
             if schema_key.lower() == canonical.lower():
