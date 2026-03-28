@@ -288,7 +288,7 @@ def process_part(
     mfg_part_num    = str(part.get("Manufacturer Part Number") or "").strip()
     mfg_name        = str(part.get("Manufacturer Name")        or "").strip()
     part_name       = str(part.get("Part Name")                or "").strip()
-    unit_of_measure = str(part.get("Unit of Measure")          or "inches").strip().lower()
+    unit_of_measure = str(part.get("Unit of Measure")          or "").strip().lower()
 
     from src.class_extractor import extract_class_from_content
     from src.web_scraper import WebScraper

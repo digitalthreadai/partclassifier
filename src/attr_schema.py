@@ -26,7 +26,7 @@ import json
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 # ── File locations ───────────────────────────────────────────────────────────
@@ -49,7 +49,6 @@ LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values
 ATTR_DICT: dict[str, dict] = {}            # attr id -> full attribute record
 _DEFAULT_SCHEMA: list[str] = []
 _SCHEMA_SOURCE: str = "none"               # "json" or "none"
-_CLASS_ATTR_OVERRIDES: dict[str, dict[str, str]] = {}  # class_name_lower -> {raw_key_lower -> canonical}
 
 
 # ── JSON loader ──────────────────────────────────────────────────────────────
@@ -172,13 +171,10 @@ def _load_schema() -> None:
 
 def _load_aliases_json() -> None:
     """
-    Load input/aliases.json and merge into ALIASES, CLASS_ALIASES, _CLASS_ATTR_OVERRIDES.
+    Load input/aliases.json — only class_aliases section.
 
-    aliases.json wins on conflict with all other alias sources.
-    Schema:
-        attribute_aliases:       { canonical_name: [alias, ...] }
-        class_aliases:           { canonical_class: [alias, ...] }
-        class_attribute_overrides: { class_name: { raw_key: canonical_attr } }
+    Attribute aliases come exclusively from Attributes.json (name, shortname,
+    aliases fields) to avoid LLM-generated aliases overriding correct mappings.
     """
     if not _ALIASES_JSON.exists():
         return
@@ -190,39 +186,14 @@ def _load_aliases_json() -> None:
         warnings.warn(f"Failed to load aliases.json ({e}), skipping")
         return
 
-    attr_names = {a["name"] for a in ATTR_DICT.values()}
-
-    # attribute_aliases: canonical → [aliases]
-    for canonical, alias_list in data.get("attribute_aliases", {}).items():
-        # Auto-correct canonical to actual schema attr name (handles case mismatches)
-        actual = canonical
-        if ATTR_DICT and canonical not in attr_names:
-            ci = next((n for n in attr_names if n.lower() == canonical.lower()), None)
-            if ci:
-                actual = ci  # correct casing mismatch silently
-            else:
-                warnings.warn(
-                    f"aliases.json: '{canonical}' not in Attributes.json — skipped"
-                )
-                continue  # skip dead aliases entirely
-        ALIASES[actual.lower()] = actual
-        for alias in alias_list:
-            ALIASES[alias.lower()] = actual
-
-    # class_aliases: canonical → [aliases]
+    # class_aliases: canonical → [aliases]  (used by part_classifier for class name matching)
     for canonical, aliases in data.get("class_aliases", {}).items():
         CLASS_ALIASES[canonical.lower()] = canonical
         for alias in aliases:
             CLASS_ALIASES[alias.lower()] = canonical
 
-    # class_attribute_overrides: class_name → {raw_key → canonical_attr}
-    for cls_name, overrides in data.get("class_attribute_overrides", {}).items():
-        _CLASS_ATTR_OVERRIDES[cls_name.lower()] = {k.lower(): v for k, v in overrides.items()}
-
     print(f"[schema] aliases.json loaded: "
-          f"{len(data.get('attribute_aliases', {}))} attr aliases, "
-          f"{len(data.get('class_aliases', {}))} class aliases, "
-          f"{len(data.get('class_attribute_overrides', {}))} class overrides")
+          f"{len(data.get('class_aliases', {}))} class aliases")
 
 
 _load_schema()
@@ -345,82 +316,37 @@ def map_to_json_class(detected_class: str) -> tuple[str, bool]:
 
 
 def schema_source() -> str:
-    """Return 'json', 'excel', or 'hardcoded' indicating where schema was loaded from."""
+    """Return 'json' or 'none' indicating where schema was loaded from."""
     return _SCHEMA_SOURCE
-
-
-def _fuzzy_match_attr(raw_key: str) -> Optional[str]:
-    """
-    Word-overlap fallback: all alias tokens must appear in the raw key.
-    Only multi-word aliases are tried (single-word too ambiguous).
-    Returns the canonical name on match, or None.
-    """
-    tokens = set(raw_key.lower().split())
-    best: Optional[str] = None
-    best_score = 0
-    for alias_lower, canonical in ALIASES.items():
-        alias_tokens = set(alias_lower.split())
-        if len(alias_tokens) > 1:
-            overlap = len(tokens & alias_tokens)
-            if overlap == len(alias_tokens) and overlap > best_score:
-                best_score = overlap
-                best = canonical
-    return best
 
 
 def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
     """
-    1. Alias-normalize all keys in `raw` (class overrides → exact alias → fuzzy match).
+    1. Map raw LLM keys to TC attribute names via exact alias lookup.
     2. LOV-normalize values where applicable.
-    3. Order them according to the class schema (unknown keys go at the end).
+    3. Order: TC schema attrs first, then unmatched LLM keys at the end.
     Returns a plain dict with consistent, canonical keys.
     """
     schema = get_schema(part_class)
 
-    # Build class-aware override lookup for this part_class
-    cls_lower = (part_class or "").lower()
-    cls_overrides: dict[str, str] = {}
-    for k, v in _CLASS_ATTR_OVERRIDES.items():
-        if k in cls_lower or cls_lower in k:
-            cls_overrides.update(v)
-
-    # Step 1: normalize keys and LOV values
     normalized: dict[str, str] = {}
     for k, v in raw.items():
         k_lower = k.strip().lower()
-        # Priority: class-aware override → exact alias → fuzzy multi-word → original
-        canonical = (
-            cls_overrides.get(k_lower)
-            or ALIASES.get(k_lower)
-            or _fuzzy_match_attr(k_lower)
-            or k.strip()
-        )
-        # Prefer schema-cased version if available
+        # Exact alias lookup (from Attributes.json name/shortname/aliases) or keep original
+        canonical = ALIASES.get(k_lower) or k.strip()
+        # Match to schema casing
         for schema_key in schema:
             if schema_key.lower() == canonical.lower():
                 canonical = schema_key
                 break
 
         str_val = str(v).strip()
-
-        # Step 2: LOV normalization
         if canonical in LOV_MAP and str_val:
             str_val = _normalize_to_lov(str_val, LOV_MAP[canonical])
 
         normalized[canonical] = str_val
 
-    # Step 2b: collapse keys that differ only by case
-    deduped: dict[str, str] = {}
-    for k, v in normalized.items():
-        existing = next((ek for ek in deduped if ek.lower() == k.lower()), None)
-        if existing:
-            if not deduped[existing] and v:  # fill empty slot only
-                deduped[existing] = v
-        else:
-            deduped[k] = v
-    normalized = deduped
-
-    # Step 3: order by schema, then append any extras not in schema
+    # Order: TC schema attrs first, then LLM extras
     ordered: dict[str, str] = {}
     for key in schema:
         if key in normalized:

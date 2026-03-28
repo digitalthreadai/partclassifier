@@ -10,24 +10,36 @@ MAX_CONTENT_CHARS = 8_000
 
 def _unit_instructions(unit_of_measure: str) -> tuple[str, str, str]:
     """Return (label, short, conversion_instruction) for the given unit."""
-    if unit_of_measure.strip().lower() == "mm":
+    u = unit_of_measure.strip().lower()
+    if u == "mm":
         return (
             "metric (mm)",
             "mm",
             "All dimensional values MUST be in mm. "
             "If source provides inches, convert (1 in = 25.4 mm).",
         )
-    else:
+    elif u in ("inches", "in", "inch"):
         return (
             "imperial (inches)",
             "inches",
             "All dimensional values MUST be in inches. "
             "If source provides mm, convert (1 mm = 0.03937 in).",
         )
+    else:
+        return (
+            "as-is (preserve original units)",
+            "original",
+            "Keep dimensional values in whatever unit they appear in the source content. "
+            "Do NOT convert units. Include the unit suffix (mm, in, etc.) with each value.",
+        )
 
 
 def _example_json(unit_short: str) -> str:
     if unit_short == "mm":
+        return ('{"Inner Diameter": "21.2 mm", "Outer Diameter": "33.6 mm", '
+                '"Thickness": "3.8 mm to 4.2 mm", "Material": "18-8 Stainless Steel", '
+                '"Hardness": "Rockwell C34", "Standard": "DIN 127B"}')
+    elif unit_short == "original":
         return ('{"Inner Diameter": "21.2 mm", "Outer Diameter": "33.6 mm", '
                 '"Thickness": "3.8 mm to 4.2 mm", "Material": "18-8 Stainless Steel", '
                 '"Hardness": "Rockwell C34", "Standard": "DIN 127B"}')

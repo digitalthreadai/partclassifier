@@ -12,6 +12,7 @@ Usage:
     python main.py --input path/to/input.xlsx --output path/to/output/
     python main.py --no-cache       # ignore LLM cache
     python main.py --clear-cache    # delete cache before run
+    python main.py --fresh          # delete cache + progress, start fresh
 
 Prerequisites:
     Copy .env.example to .env and configure LLM provider + API key.
@@ -51,6 +52,7 @@ EXCEL_PATH = Path(_get_arg("--input", str(BASE_DIR / "input" / "PartClassifierIn
 OUTPUT_DIR = Path(_get_arg("--output", str(BASE_DIR / "output")))
 NO_CACHE = _has_flag("--no-cache")
 CLEAR_CACHE = _has_flag("--clear-cache")
+FRESH = _has_flag("--fresh")
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -93,7 +95,7 @@ async def process_part(
     mfg_part_num    = str(part.get("Manufacturer Part Number") or "").strip()
     mfg_name        = str(part.get("Manufacturer Name")        or "").strip()
     part_name       = str(part.get("Part Name")                or "").strip()
-    unit_of_measure = str(part.get("Unit of Measure")          or "inches").strip().lower()
+    unit_of_measure = str(part.get("Unit of Measure")          or "").strip().lower()
 
     print(f"\n{'-'*60}")
     print(f"  Part #  : {mfg_part_num}")
@@ -295,6 +297,13 @@ async def main() -> None:
 
     # LLM cache setup
     cache_path = BASE_DIR / "llm_cache.json"
+    if FRESH:
+        if cache_path.exists():
+            cache_path.unlink()
+        progress_path = OUTPUT_DIR / "progress.json"
+        if progress_path.exists():
+            progress_path.unlink()
+        print("  Fresh start: cache + progress cleared.")
     llm_cache = None
     if not NO_CACHE:
         if CLEAR_CACHE and cache_path.exists():
