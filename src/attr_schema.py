@@ -489,6 +489,76 @@ def get_tc_class_id(part_class: str) -> str:
     return ""
 
 
+def _normalize_class_name(name: str) -> str:
+    """Normalize a class name for fuzzy matching: lowercase, strip plural suffix."""
+    n = name.lower().strip()
+    # Strip common plural suffixes
+    if n.endswith("ies"):
+        n = n[:-3] + "y"
+    elif n.endswith("es") and not n.endswith("ses"):
+        n = n[:-2]
+    elif n.endswith("s") and not n.endswith("ss"):
+        n = n[:-1]
+    return n
+
+
+def map_to_json_class(detected_class: str) -> tuple[str, bool]:
+    """Map a detected class name to the nearest Classes.json class.
+
+    Returns (mapped_class, found_in_json).
+    Matching is case-insensitive and grammar-insensitive (singular/plural).
+
+    Example: "Flat Washer" not in JSON, but "WASHERS" is → returns ("WASHERS", True)
+    """
+    if not detected_class or detected_class in ("Unclassified", "Unknown", "Error"):
+        return detected_class, False
+
+    # Build normalized lookup from JSON classes
+    json_classes = list(CLASS_SCHEMAS.keys())
+    norm_map = {}  # normalized_name → original JSON class name
+    for jc in json_classes:
+        norm_map[_normalize_class_name(jc)] = jc
+
+    # 1. Exact match (case-insensitive + plural-insensitive)
+    detected_norm = _normalize_class_name(detected_class)
+    if detected_norm in norm_map:
+        return norm_map[detected_norm], True
+
+    # 2. Check if any word in detected class matches a JSON class
+    # e.g., "Flat Washer" → check "flat", "washer" against JSON classes
+    detected_words = detected_class.lower().split()
+    for word in detected_words:
+        word_norm = _normalize_class_name(word)
+        if word_norm in norm_map:
+            return norm_map[word_norm], True
+
+    # 3. Check if detected class is a substring of any JSON class or vice versa
+    for jc_norm, jc_original in norm_map.items():
+        if detected_norm in jc_norm or jc_norm in detected_norm:
+            return jc_original, True
+
+    # 4. Walk parent hierarchy — check if any parent class exists in JSON
+    # (uses _PARENT_CHILDREN from class_extractor if available)
+    try:
+        from src.class_extractor import _CHILD_PARENTS
+        current = detected_class
+        visited = set()
+        while current and current not in visited:
+            visited.add(current)
+            parents = _CHILD_PARENTS.get(current, set())
+            for parent in parents:
+                parent_norm = _normalize_class_name(parent)
+                if parent_norm in norm_map:
+                    return norm_map[parent_norm], True
+            # Try next level up
+            current = next(iter(parents), None) if parents else None
+    except ImportError:
+        pass
+
+    # 5. No match — return as-is, not in JSON
+    return detected_class, False
+
+
 def schema_source() -> str:
     """Return 'json', 'excel', or 'hardcoded' indicating where schema was loaded from."""
     return _SCHEMA_SOURCE

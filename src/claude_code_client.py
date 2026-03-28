@@ -356,7 +356,10 @@ class ClaudeCodeClient:
             "- For priority attributes, use the EXACT names listed above\n"
             "- For other attributes, use names as they appear in the source\n"
             "- Include Material, Hardness, Standard if present in the source\n"
-            "- Omit attributes not found in the source\n\n"
+            "- Omit attributes not found in the source\n"
+            f"- CRITICAL: Return exactly ONE value per attribute for THIS specific part "
+            f"({mfg_part_num}). If the page lists multiple sizes, pick the one matching "
+            f"this part number or name: {part_name}. Never return comma-separated lists.\n\n"
             "RESPOND WITH ONLY a flat JSON object.\n"
             'You MUST include a "_source_url" key with the exact URL you fetched the data from.\n'
             "Do NOT include any explanation, markdown code fences, or text before/after the JSON.\n"

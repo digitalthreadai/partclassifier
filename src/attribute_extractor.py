@@ -52,16 +52,43 @@ def _parse_json(raw: str) -> dict:
     return {}
 
 
-def _clean_result(result: dict, part_class: str) -> dict:
-    """Remove junk keys and normalize."""
+def _single_value(value: str, part_name: str) -> str:
+    """If value contains multiple comma-separated values, pick the best one.
+
+    Pages often list a sizing table with multiple values (e.g., ".055, .063, .078").
+    We need exactly ONE value for this specific part.
+    """
+    parts = [v.strip() for v in value.split(",")]
+    if len(parts) <= 2:
+        return value  # "3.8 to 4.2" or "18-8, Stainless Steel" are fine
+
+    # Multiple values detected — try to match against part name
+    part_lower = part_name.lower()
+    for p in parts:
+        p_clean = p.strip().strip('"').strip("'")
+        if p_clean and p_clean.lower() in part_lower:
+            return p_clean
+
+    # No match in part name — return first value
+    return parts[0].strip()
+
+
+def _clean_result(result: dict, part_class: str, part_name: str = "") -> dict:
+    """Remove junk keys, enforce single values, and normalize."""
     skip_keys = {"part number", "part name", "part no", "part #", "_source_url",
                   "description", "features", "overview", "product name", "category",
                   "manufacturer", "brand", "model", "series", "url", "image"}
-    cleaned = {
-        k: v for k, v in result.items()
-        if k.lower() not in skip_keys
-        and str(v).strip().lower() not in ("", "none", "not specified", "n/a", "unknown", "null")
-    }
+    cleaned = {}
+    for k, v in result.items():
+        if k.lower() in skip_keys:
+            continue
+        vs = str(v).strip()
+        if vs.lower() in ("", "none", "not specified", "n/a", "unknown", "null"):
+            continue
+        # Enforce single value per attribute
+        if part_name:
+            vs = _single_value(vs, part_name)
+        cleaned[k] = vs
     return normalize_attrs(cleaned, part_class)
 
 
@@ -127,6 +154,10 @@ class AttributeExtractor:
                         f"2. For other attributes, use names as they appear in the content.\n"
                         f"3. All dimensional values in {unit_short}. Convert if needed.\n"
                         f"4. Ranges: \"3.8 mm to 4.2 mm\". Omit attributes not found.\n"
+                        f"5. CRITICAL: Return exactly ONE value per attribute — the value "
+                        f"for THIS specific part ({mfg_part_num}). If the page lists "
+                        f"multiple sizes/values, pick the one matching {mfg_part_num} "
+                        f"or part name: {part_name}. Never return comma-separated lists.\n"
                         f"EXAMPLE: {example}\n\n"
                         f"CONTENT:\n---\n{truncated}\n---\n\n"
                         f"Return flat JSON object with ALL extracted attributes."
@@ -138,7 +169,7 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        attrs = _clean_result(result, part_class)
+        attrs = _clean_result(result, part_class, part_name=part_name)
 
         # Validation retry: only if first attempt returned SOME data but missed
         # >50% of SCHEMA attrs (count schema hits, not total attrs)

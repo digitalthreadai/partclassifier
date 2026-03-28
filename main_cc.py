@@ -405,6 +405,13 @@ def process_part(
             if metrics:
                 metrics.record_llm_call("extract")
 
+    # Map classification to Classes.json hierarchy (strict Teamcenter alignment)
+    from src.attr_schema import map_to_json_class
+    original_class = part_class
+    part_class, in_json = map_to_json_class(part_class)
+    if part_class != original_class:
+        safe_print(f"  [{index}/{total}] Mapped: {original_class} -> {part_class} (JSON)")
+
     # Re-classify from extracted attributes if still unclassified
     if part_class in ("Unclassified", "Unknown") and attributes:
         attr_text = " ".join(f"{k}: {v}" for k, v in attributes.items())
@@ -436,6 +443,21 @@ def process_part(
         agreement = compute_agreement(pre_extracted, attributes)
         metrics.record_regex(0, agreement)  # 0 = don't double-count
 
+    # Secondary fallback: merge Part Name dimensions into extracted attrs (fill gaps only)
+    if part_name and len(part_name) > 10:
+        if not attributes or len(attributes) < 3:
+            try:
+                name_attrs = client.extract_from_part_name(
+                    part_name, part_class, mfg_part_num, unit_of_measure
+                )
+                if name_attrs:
+                    for k, v in name_attrs.items():
+                        if k not in attributes:
+                            attributes[k] = v
+                    safe_print(f"  [{index}/{total}] Part name filled {len(name_attrs)} attrs")
+            except Exception as e:
+                safe_print(f"  [{index}/{total}] Part name extract error: {e}")
+
     if attributes:
         attr_lines = "\n".join(f"    {k}: {v}" for k, v in attributes.items())
         safe_print(f"  [{index}/{total}] Attrs ({len(attributes)}):\n{attr_lines}")
@@ -462,6 +484,7 @@ def process_part(
         "part":         part,
         "part_class":   part_class,
         "tc_class_id":  get_tc_class_id(part_class),
+        "in_json":      in_json,
         "attributes":   attributes,
         "source_url":   source_url or "",
     }

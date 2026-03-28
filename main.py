@@ -86,7 +86,7 @@ async def process_part(
 ) -> dict:
     from src.class_extractor import extract_class_from_content
     from src.regex_extractor import regex_extract, compute_agreement
-    from src.attr_schema import normalize_attrs, get_tc_class_id
+    from src.attr_schema import normalize_attrs, get_tc_class_id, map_to_json_class
     from src.shared import save_cache
     from src.web_scraper import _CACHE_PATH
 
@@ -150,6 +150,12 @@ async def process_part(
         if llm_cache and part_class != "Unclassified":
             llm_cache.set_classification(classify_text, part_class)
 
+    # Map classification to Classes.json hierarchy (strict Teamcenter alignment)
+    original_class = part_class
+    part_class, in_json = map_to_json_class(part_class)
+    if part_class != original_class:
+        print(f"  Mapped  : {original_class} -> {part_class} (JSON)")
+
     # STEP 3 — Regex pre-extraction
     pre_extracted: dict[str, str] = {}
     tables = getattr(result, "tables", None)
@@ -201,6 +207,22 @@ async def process_part(
             # Cache extraction
             if llm_cache and attributes and result.content:
                 llm_cache.set_extraction(mfg_part_num, part_class, result.content, attributes)
+
+        # Secondary fallback: web extraction returned empty but Part Name has dimensions
+        if not attributes and part_name and len(part_name) > 10:
+            print(f"  Falling back to part name extraction...")
+            name_attrs = await _retry_llm(
+                lambda: attr_extractor.extract_from_part_name(
+                    part_name, part_class, mfg_part_num, unit_of_measure
+                ),
+                "ExtractFromName"
+            )
+            if name_attrs:
+                attributes = name_attrs
+                source_url = "part name (fallback)"
+                print(f"  Part name extracted {len(name_attrs)} attrs")
+            if metrics:
+                metrics.record_llm_call("extract")
     else:
         # Fallback: mine dimensions from the part name / mfg info
         print(f"  Content : not found - falling back to part name")
@@ -238,6 +260,7 @@ async def process_part(
         "part":         part,
         "part_class":   part_class,
         "tc_class_id":  get_tc_class_id(part_class),
+        "in_json":      in_json,
         "attributes":   attributes,
         "source_url":   source_url or "",
     }

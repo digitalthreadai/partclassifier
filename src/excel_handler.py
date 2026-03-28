@@ -48,7 +48,8 @@ COLUMN_ALIASES = {
     "Unit of Measure": ["UOM", "Unit", "Units", "Measure"],
 }
 
-HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
+HEADER_FILL = PatternFill("solid", fgColor="1F4E79")       # Navy — input + prefix + TC attrs
+AGENT_HEADER_FILL = PatternFill("solid", fgColor="4A4A6A") # Gray-purple — agent-extracted attrs
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
 
@@ -152,7 +153,17 @@ class ExcelHandler:
     # ── Private ───────────────────────────────────────────────────────────────
 
     def _write_one_class(self, cls: str, results: list[dict]) -> str:
-        """Write a single per-class Excel file. Returns the file path."""
+        """Write a single per-class Excel file. Returns the file path.
+
+        Column order: INPUT_COLUMNS + RESULT_PREFIX_COLS + TC_ATTRS (navy) + AGENT_ATTRS (gray)
+        TC attrs include inherited attributes from parent classes in Classes.json.
+        """
+        from src.attr_schema import get_schema
+
+        # Get TC-configured attributes for this class (includes inherited from parents)
+        tc_attrs = get_schema(cls)
+        tc_attr_set = set(tc_attrs)
+
         # Collect all unique attribute keys across every part in this class
         all_attr_keys: list[str] = []
         seen: set[str] = set()
@@ -162,21 +173,31 @@ class ExcelHandler:
                     all_attr_keys.append(k)
                     seen.add(k)
 
-        # Build full column list
-        all_columns = INPUT_COLUMNS + RESULT_PREFIX_COLS + all_attr_keys
+        # Split into TC attrs (ordered by schema) and agent-extracted attrs
+        agent_attrs = [k for k in all_attr_keys if k not in tc_attr_set]
+
+        # Build full column list: input + prefix + TC attrs + agent attrs
+        all_columns = INPUT_COLUMNS + RESULT_PREFIX_COLS + tc_attrs + agent_attrs
+        tc_attr_start = len(INPUT_COLUMNS) + len(RESULT_PREFIX_COLS)
+        agent_attr_start = tc_attr_start + len(tc_attrs)
 
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = cls[:31]  # Excel sheet name limit
 
-        # Write headers
+        # Write headers with color coding
         for col_idx, header in enumerate(all_columns, start=1):
             cell = ws.cell(row=1, column=col_idx, value=header)
-            cell.fill = HEADER_FILL
+            # Color: TC attrs (navy), agent attrs (gray-purple)
+            if col_idx > agent_attr_start:
+                cell.fill = AGENT_HEADER_FILL
+            else:
+                cell.fill = HEADER_FILL
             cell.font = HEADER_FONT
             cell.alignment = CENTER
 
         # Write data rows
+        ordered_attr_keys = tc_attrs + agent_attrs  # combined in correct order
         for row_idx, r in enumerate(results, start=2):
             part = r.get("part", {})
             attrs = r.get("attributes", {})
@@ -191,9 +212,9 @@ class ExcelHandler:
             ws.cell(row=row_idx, column=offset + 1, value=r.get("tc_class_id", ""))
             ws.cell(row=row_idx, column=offset + 2, value=str(r.get("source_url", "")))
 
-            # Attribute columns
+            # Attribute columns (TC attrs first, then agent attrs)
             attr_offset = offset + len(RESULT_PREFIX_COLS)
-            for i, key in enumerate(all_attr_keys):
+            for i, key in enumerate(ordered_attr_keys):
                 ws.cell(row=row_idx, column=attr_offset + i, value=attrs.get(key, ""))
 
         # Auto-size columns
@@ -204,9 +225,12 @@ class ExcelHandler:
             )
             ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 45)
 
-        # Safe filename (strip characters invalid in file names)
+        # Filename: add -NotInTc suffix if class not found in Classes.json
         import re
         safe_cls = re.sub(r'[\\/:*?"<>|]', "_", cls)
-        out_path = self.output_dir / f"{safe_cls}.xlsx"
+        # Check if any result has in_json=False (class not in TC)
+        in_json = any(r.get("in_json", True) for r in results)
+        suffix = "" if in_json else "-NotInTc"
+        out_path = self.output_dir / f"{safe_cls}{suffix}.xlsx"
         wb.save(str(out_path))
         return str(out_path)
