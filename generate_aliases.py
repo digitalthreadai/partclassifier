@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import asyncio
 import json
 import os
 import sys
@@ -80,17 +81,15 @@ def _batches(items: list, size: int):
         yield items[i : i + size]
 
 
-def _llm_call(client, prompt: str, label: str) -> Optional[dict]:
+def _llm_call(llm, prompt: str, label: str) -> Optional[dict]:
     """Call LLM and parse JSON response. Returns dict or None on failure."""
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            response = client.chat.completions.create(
-                model=client._model,
+            text = asyncio.run(llm.chat(
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
                 max_tokens=2048,
-            )
-            text = response.choices[0].message.content.strip()
+                temperature=0.2,
+            ))
             # Extract JSON block
             if "```" in text:
                 text = text.split("```")[1]
@@ -203,7 +202,7 @@ def generate(
 
     try:
         llm = LLMClient()
-        print(f"[LLM] Provider: {os.getenv('LLM_PROVIDER', 'unknown')} | Model: {llm._model}")
+        print(f"[LLM] Provider: {os.getenv('LLM_PROVIDER', 'unknown')} | Model: {llm.model}")
     except (ValueError, ImportError) as e:
         print(f"[ERROR] LLM init failed: {e}")
         print("  Check your .env file — same config as main.py")
@@ -248,7 +247,7 @@ def generate(
         label = f"attr-aliases batch {i}"
         print(f"  Batch {i}: {', '.join(batch[:3])}{'...' if len(batch) > 3 else ''}")
         prompt = _prompt_attr_aliases(batch)
-        data = _llm_call(llm.client, prompt, label)
+        data = _llm_call(llm, prompt, label)
         if data:
             for name in batch:
                 # Match case-insensitively
@@ -276,7 +275,7 @@ def generate(
         label = f"class-aliases batch {i}"
         print(f"  Batch {i}: {', '.join(batch[:3])}{'...' if len(batch) > 3 else ''}")
         prompt = _prompt_class_aliases(batch)
-        data = _llm_call(llm.client, prompt, label)
+        data = _llm_call(llm, prompt, label)
         if data:
             for name in batch:
                 match = next((v for k, v in data.items() if k.lower() == name.lower()), None)
@@ -301,7 +300,7 @@ def generate(
         label = f"class-overrides batch {i}"
         print(f"  Batch {i}: {', '.join(batch[:3])}{'...' if len(batch) > 3 else ''}")
         prompt = _prompt_class_overrides(batch, attr_names[:30])  # limit attr list to avoid token overflow
-        data = _llm_call(llm.client, prompt, label)
+        data = _llm_call(llm, prompt, label)
         if data:
             for name in batch:
                 match = next((v for k, v in data.items() if k.lower() == name.lower()), None)
