@@ -3,8 +3,8 @@ Canonical attribute names and normalization for each part class.
 
 SCHEMA SOURCE
 -------------
-input/Classes.json + input/Attributes.json  (required)
-input/aliases.json                          (optional, loaded last — wins on conflict)
+schema/Classes.json + schema/Attributes.json  (required)
+schema/aliases.json                            (optional, loaded last — wins on conflict)
 
 PUBLIC API
 ----------
@@ -31,10 +31,10 @@ from typing import Any
 
 # ── File locations ───────────────────────────────────────────────────────────
 
-_INPUT_DIR = Path(__file__).parent.parent / "input"
-_CLASSES_JSON = _INPUT_DIR / "Classes.json"
-_ATTRS_JSON = _INPUT_DIR / "Attributes.json"
-_ALIASES_JSON = _INPUT_DIR / "aliases.json"
+_SCHEMA_DIR = Path(__file__).parent.parent / "schema"
+_CLASSES_JSON = _SCHEMA_DIR / "Classes.json"
+_ATTRS_JSON = _SCHEMA_DIR / "Attributes.json"
+_ALIASES_JSON = _SCHEMA_DIR / "aliases.json"
 
 
 # ── Module-level data (populated at import time) ────────────────────────────
@@ -163,7 +163,7 @@ def _load_schema() -> None:
             warnings.warn(f"Failed to load JSON schema: {e}")
     else:
         warnings.warn(
-            "Schema JSON not found. Expected: input/Classes.json + input/Attributes.json"
+            "Schema JSON not found. Expected: schema/Classes.json + schema/Attributes.json"
         )
     # Always load aliases.json last — wins on conflict with all other sources
     _load_aliases_json()
@@ -171,10 +171,13 @@ def _load_schema() -> None:
 
 def _load_aliases_json() -> None:
     """
-    Load input/aliases.json — only class_aliases section.
+    Load schema/aliases.json — only class_aliases section.
 
     Attribute aliases come exclusively from Attributes.json (name, shortname,
     aliases fields) to avoid LLM-generated aliases overriding correct mappings.
+
+    Class aliases that are themselves KNOWN_CLASS names are rejected to prevent
+    catastrophic overwrites (e.g., "Washer" as alias for "Gasket").
     """
     if not _ALIASES_JSON.exists():
         return
@@ -186,14 +189,24 @@ def _load_aliases_json() -> None:
         warnings.warn(f"Failed to load aliases.json ({e}), skipping")
         return
 
-    # class_aliases: canonical → [aliases]  (used by part_classifier for class name matching)
-    for canonical, aliases in data.get("class_aliases", {}).items():
+    # Build set of known class names (lowercase) to reject as aliases
+    known_lower = {c.lower() for c in KNOWN_CLASSES}
+    skipped = 0
+
+    # class_aliases: canonical → [aliases]  (used by class_extractor for scoring)
+    for canonical, alias_list in data.get("class_aliases", {}).items():
         CLASS_ALIASES[canonical.lower()] = canonical
-        for alias in aliases:
-            CLASS_ALIASES[alias.lower()] = canonical
+        for alias in alias_list:
+            alias_lower = alias.strip().lower()
+            if alias_lower in known_lower:
+                # SKIP: a real class name cannot be an alias for another class
+                skipped += 1
+                continue
+            CLASS_ALIASES[alias_lower] = canonical
 
     print(f"[schema] aliases.json loaded: "
-          f"{len(data.get('class_aliases', {}))} class aliases")
+          f"{len(data.get('class_aliases', {}))} class aliases"
+          f"{f' ({skipped} conflicting aliases skipped)' if skipped else ''}")
 
 
 _load_schema()
@@ -274,6 +287,14 @@ def map_to_json_class(detected_class: str) -> tuple[str, bool]:
     norm_map = {}  # normalized_name → original JSON class name
     for jc in json_classes:
         norm_map[_normalize_class_name(jc)] = jc
+
+    # 0. Check CLASS_ALIASES — LLM may output an alias name
+    alias_lower = detected_class.strip().lower()
+    if alias_lower in CLASS_ALIASES:
+        resolved = CLASS_ALIASES[alias_lower]
+        resolved_norm = _normalize_class_name(resolved)
+        if resolved_norm in norm_map:
+            return norm_map[resolved_norm], True
 
     # 1. Exact match (case-insensitive + plural-insensitive)
     detected_norm = _normalize_class_name(detected_class)

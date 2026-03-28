@@ -1,0 +1,950 @@
+{
+  "version": "1.0",
+  "description": "Teamcenter-compatible hierarchical class tree for PartClassifier",
+  "classes": [
+    {
+      "id": "ICM001",
+      "classid": "ICM001",
+      "name": "Mechanical",
+      "aliases": [],
+      "attributeslist": [
+        "23993",
+        "23994",
+        "23995",
+        "23998",
+        "23999",
+        "24000",
+        "24001"
+      ],
+      "children": [
+        {
+          "id": "ICM001001",
+          "classid": "ICM001001",
+          "name": "Fastener",
+          "aliases": [],
+          "attributeslist": [],
+          "children": [
+            {
+              "id": "ICM001001001",
+              "classid": "ICM001001001",
+              "name": "Washer",
+              "aliases": [],
+              "attributeslist": [
+                "23990",
+                "23991",
+                "23992",
+                "23996",
+                "24002"
+              ],
+              "children": [
+                {
+                  "id": "ICM001001001001",
+                  "classid": "ICM001001001001",
+                  "name": "Flat Washer",
+                  "aliases": [
+                    "flat wshr",
+                    "fender washer",
+                    "fender"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001001002",
+                  "classid": "ICM001001001002",
+                  "name": "Fender Washer",
+                  "aliases": [
+                    "fender wash"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001001003",
+                  "classid": "ICM001001001003",
+                  "name": "Lock Washer",
+                  "aliases": [
+                    "lock wshr"
+                  ],
+                  "attributeslist": [],
+                  "children": [
+                    {
+                      "id": "ICM001001001003001",
+                      "classid": "ICM001001001003001",
+                      "name": "Split Lock Washer",
+                      "aliases": [
+                        "spt lk",
+                        "spring lock washer",
+                        "split lock"
+                      ],
+                      "attributeslist": [
+                        "23997"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "id": "ICM001001001003002",
+                      "classid": "ICM001001001003002",
+                      "name": "Internal Tooth Lock Washer",
+                      "aliases": [
+                        "int tooth"
+                      ],
+                      "attributeslist": [],
+                      "children": []
+                    },
+                    {
+                      "id": "ICM001001001003003",
+                      "classid": "ICM001001001003003",
+                      "name": "External Tooth Lock Washer",
+                      "aliases": [
+                        "ext tooth"
+                      ],
+                      "attributeslist": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "ICM001001002",
+              "classid": "ICM001001002",
+              "name": "Bolt",
+              "aliases": [],
+              "attributeslist": [
+                "24008",
+                "24006",
+                "24007",
+                "24009",
+                "24010",
+                "24011"
+              ],
+              "children": [
+                {
+                  "id": "ICM001001002001",
+                  "classid": "ICM001001002001",
+                  "name": "Hex Bolt",
+                  "aliases": [
+                    "hex cap screw",
+                    "hex head bolt"
+                  ],
+                  "attributeslist": [
+                    "24013"
+                  ],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001002002",
+                  "classid": "ICM001001002002",
+                  "name": "Carriage Bolt",
+                  "aliases": [
+                    "carriage"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001002003",
+                  "classid": "ICM001001002003",
+                  "name": "Eye Bolt",
+                  "aliases": [],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001003",
+              "classid": "ICM001001003",
+              "name": "Screw",
+              "aliases": [],
+              "attributeslist": [
+                "24008",
+                "24006",
+                "24007",
+                "24009",
+                "24010"
+              ],
+              "children": [
+                {
+                  "id": "ICM001001003001",
+                  "classid": "ICM001001003001",
+                  "name": "Cap Screw",
+                  "aliases": [],
+                  "attributeslist": [],
+                  "children": [
+                    {
+                      "id": "ICM001001003001001",
+                      "classid": "ICM001001003001001",
+                      "name": "Socket Head Cap Screw",
+                      "aliases": [
+                        "shcs",
+                        "socket head cap",
+                        "socket cap screw"
+                      ],
+                      "attributeslist": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "id": "ICM001001003002",
+                  "classid": "ICM001001003002",
+                  "name": "Set Screw",
+                  "aliases": [],
+                  "attributeslist": [
+                    "24011"
+                  ],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001003003",
+                  "classid": "ICM001001003003",
+                  "name": "Machine Screw",
+                  "aliases": [],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001004",
+              "classid": "ICM001001004",
+              "name": "Nut",
+              "aliases": [],
+              "attributeslist": [
+                "24013",
+                "24012"
+              ],
+              "children": [
+                {
+                  "id": "ICM001001004001",
+                  "classid": "ICM001001004001",
+                  "name": "Hex Nut",
+                  "aliases": [],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001004002",
+                  "classid": "ICM001001004002",
+                  "name": "Lock Nut",
+                  "aliases": [
+                    "nylon insert",
+                    "nyloc"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001004003",
+                  "classid": "ICM001001004003",
+                  "name": "Wing Nut",
+                  "aliases": [],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001005",
+              "classid": "ICM001001005",
+              "name": "Pin",
+              "aliases": [],
+              "attributeslist": [
+                "24014",
+                "24003"
+              ],
+              "children": [
+                {
+                  "id": "ICM001001005001",
+                  "classid": "ICM001001005001",
+                  "name": "Cotter Pin",
+                  "aliases": [
+                    "cotter"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001005002",
+                  "classid": "ICM001001005002",
+                  "name": "Dowel Pin",
+                  "aliases": [
+                    "dowel"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001005003",
+                  "classid": "ICM001001005003",
+                  "name": "Roll Pin",
+                  "aliases": [
+                    "roll pin",
+                    "spring pin"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001006",
+              "classid": "ICM001001006",
+              "name": "Clip",
+              "aliases": [],
+              "attributeslist": [],
+              "children": [
+                {
+                  "id": "ICM001001006001",
+                  "classid": "ICM001001006001",
+                  "name": "E-Clip",
+                  "aliases": [
+                    "e-clip"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001001006002",
+                  "classid": "ICM001001006002",
+                  "name": "C-Clip",
+                  "aliases": [
+                    "c-clip"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001007",
+              "classid": "ICM001001007",
+              "name": "Ring",
+              "aliases": [],
+              "attributeslist": [],
+              "children": [
+                {
+                  "id": "ICM001001007001",
+                  "classid": "ICM001001007001",
+                  "name": "Retaining Ring",
+                  "aliases": [
+                    "snap ring",
+                    "circlip"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001008",
+              "classid": "ICM001001008",
+              "name": "Rivet",
+              "aliases": [],
+              "attributeslist": [],
+              "children": [
+                {
+                  "id": "ICM001001008001",
+                  "classid": "ICM001001008001",
+                  "name": "Blind Rivet",
+                  "aliases": [
+                    "pop rivet"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001009",
+              "classid": "ICM001001009",
+              "name": "Hook",
+              "aliases": [],
+              "attributeslist": [],
+              "children": [
+                {
+                  "id": "ICM001001009001",
+                  "classid": "ICM001001009001",
+                  "name": "Eye Hook",
+                  "aliases": [],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001001010",
+              "classid": "ICM001001010",
+              "name": "Anchor",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001001011",
+              "classid": "ICM001001011",
+              "name": "Insert",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001001012",
+              "classid": "ICM001001012",
+              "name": "Stud",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001001013",
+              "classid": "ICM001001013",
+              "name": "Standoff",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM001002",
+          "classid": "ICM001002",
+          "name": "Spring",
+          "aliases": [],
+          "attributeslist": [
+            "24003",
+            "24014"
+          ],
+          "children": [
+            {
+              "id": "ICM001002001",
+              "classid": "ICM001002001",
+              "name": "Compression Spring",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM001003",
+          "classid": "ICM001003",
+          "name": "Seal",
+          "aliases": [],
+          "attributeslist": [
+            "23990",
+            "23991",
+            "23992"
+          ],
+          "children": [
+            {
+              "id": "ICM001003001",
+              "classid": "ICM001003001",
+              "name": "O-Ring",
+              "aliases": [
+                "oring",
+                "o ring"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001003002",
+              "classid": "ICM001003002",
+              "name": "Gasket",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM001004",
+          "classid": "ICM001004",
+          "name": "Fitting",
+          "aliases": [],
+          "attributeslist": [
+            "24031"
+          ],
+          "children": [
+            {
+              "id": "ICM001004001",
+              "classid": "ICM001004001",
+              "name": "Tube Fitting",
+              "aliases": [
+                "compression fitting"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001004002",
+              "classid": "ICM001004002",
+              "name": "VCR Fitting",
+              "aliases": [
+                "vcr fitting"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001004003",
+              "classid": "ICM001004003",
+              "name": "Pipe Fitting",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM001005",
+          "classid": "ICM001005",
+          "name": "Bearing",
+          "aliases": [],
+          "attributeslist": [
+            "23990",
+            "23991",
+            "23992",
+            "24015",
+            "24016",
+            "24017",
+            "24018"
+          ],
+          "children": [
+            {
+              "id": "ICM001005001",
+              "classid": "ICM001005001",
+              "name": "Ball Bearing",
+              "aliases": [],
+              "attributeslist": [],
+              "children": [
+                {
+                  "id": "ICM001005001001",
+                  "classid": "ICM001005001001",
+                  "name": "Deep Groove Ball Bearing",
+                  "aliases": [
+                    "dgbb",
+                    "deep groove",
+                    "radial ball bearing"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                },
+                {
+                  "id": "ICM001005001002",
+                  "classid": "ICM001005001002",
+                  "name": "Angular Contact Bearing",
+                  "aliases": [
+                    "angular contact"
+                  ],
+                  "attributeslist": [],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "ICM001005002",
+              "classid": "ICM001005002",
+              "name": "Needle Bearing",
+              "aliases": [
+                "needle roller"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001005003",
+              "classid": "ICM001005003",
+              "name": "Crossed Roller Bearing",
+              "aliases": [
+                "crossed roller"
+              ],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM001006",
+          "classid": "ICM001006",
+          "name": "Linear Motion",
+          "aliases": [],
+          "attributeslist": [],
+          "children": [
+            {
+              "id": "ICM001006001",
+              "classid": "ICM001006001",
+              "name": "Linear Guide",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001006002",
+              "classid": "ICM001006002",
+              "name": "Linear Block",
+              "aliases": [
+                "guide block"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM001006003",
+              "classid": "ICM001006003",
+              "name": "Ball Screw",
+              "aliases": [
+                "ball screw"
+              ],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM001007",
+          "classid": "ICM001007",
+          "name": "Bushing",
+          "aliases": [],
+          "attributeslist": [],
+          "children": []
+        },
+        {
+          "id": "ICM001008",
+          "classid": "ICM001008",
+          "name": "Spacer",
+          "aliases": [],
+          "attributeslist": [],
+          "children": []
+        },
+        {
+          "id": "ICM001009",
+          "classid": "ICM001009",
+          "name": "Bracket",
+          "aliases": [],
+          "attributeslist": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "ICM002",
+      "classid": "ICM002",
+      "name": "Electrical",
+      "aliases": [],
+      "attributeslist": [
+        "23993",
+        "23994",
+        "23995",
+        "23998",
+        "23999",
+        "24000",
+        "24001"
+      ],
+      "children": [
+        {
+          "id": "ICM002001",
+          "classid": "ICM002001",
+          "name": "Sensor",
+          "aliases": [],
+          "attributeslist": [
+            "24019",
+            "24020",
+            "24023",
+            "24024",
+            "24025",
+            "24026",
+            "24027"
+          ],
+          "children": [
+            {
+              "id": "ICM002001001",
+              "classid": "ICM002001001",
+              "name": "Proximity Sensor",
+              "aliases": [
+                "inductive sensor"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM002001002",
+              "classid": "ICM002001002",
+              "name": "Photoelectric Sensor",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM002001003",
+              "classid": "ICM002001003",
+              "name": "Fiber Optic Sensor",
+              "aliases": [
+                "fiber sensor",
+                "fiber unit"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM002001004",
+              "classid": "ICM002001004",
+              "name": "Laser Sensor",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM002001005",
+              "classid": "ICM002001005",
+              "name": "Pressure Sensor",
+              "aliases": [
+                "pressure transducer"
+              ],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM002002",
+          "classid": "ICM002002",
+          "name": "Connector",
+          "aliases": [],
+          "attributeslist": [
+            "24028",
+            "24029",
+            "24030",
+            "24019",
+            "24020"
+          ],
+          "children": [
+            {
+              "id": "ICM002002001",
+              "classid": "ICM002002001",
+              "name": "Terminal",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM002002002",
+              "classid": "ICM002002002",
+              "name": "Relay",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM002003",
+          "classid": "ICM002003",
+          "name": "Timer",
+          "aliases": [],
+          "attributeslist": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "ICM003",
+      "classid": "ICM003",
+      "name": "Vacuum & Semiconductor",
+      "aliases": [],
+      "attributeslist": [
+        "23993",
+        "23994",
+        "23995",
+        "23998",
+        "23999",
+        "24000",
+        "24001"
+      ],
+      "children": [
+        {
+          "id": "ICM003001",
+          "classid": "ICM003001",
+          "name": "Valve",
+          "aliases": [],
+          "attributeslist": [
+            "24031",
+            "24032"
+          ],
+          "children": [
+            {
+              "id": "ICM003001001",
+              "classid": "ICM003001001",
+              "name": "Solenoid Valve",
+              "aliases": [
+                "solenoid valve"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003001002",
+              "classid": "ICM003001002",
+              "name": "Pneumatic Valve",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003001003",
+              "classid": "ICM003001003",
+              "name": "Vacuum Valve",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003001004",
+              "classid": "ICM003001004",
+              "name": "Gate Valve",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM003002",
+          "classid": "ICM003002",
+          "name": "Pneumatic",
+          "aliases": [],
+          "attributeslist": [
+            "24031",
+            "24032"
+          ],
+          "children": [
+            {
+              "id": "ICM003002001",
+              "classid": "ICM003002001",
+              "name": "Pneumatic Cylinder",
+              "aliases": [
+                "air cylinder",
+                "round cylinder",
+                "compact cylinder"
+              ],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003002002",
+              "classid": "ICM003002002",
+              "name": "Pressure Regulator",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003002003",
+              "classid": "ICM003002003",
+              "name": "Flow Controller",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM003003",
+          "classid": "ICM003003",
+          "name": "Filter",
+          "aliases": [],
+          "attributeslist": [
+            "24034"
+          ],
+          "children": [
+            {
+              "id": "ICM003003001",
+              "classid": "ICM003003001",
+              "name": "Gas Filter",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003003002",
+              "classid": "ICM003003002",
+              "name": "Liquid Filter",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM003004",
+          "classid": "ICM003004",
+          "name": "Gauge",
+          "aliases": [],
+          "attributeslist": [],
+          "children": [
+            {
+              "id": "ICM003004001",
+              "classid": "ICM003004001",
+              "name": "Pressure Gauge",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003004002",
+              "classid": "ICM003004002",
+              "name": "Vacuum Gauge",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003004003",
+              "classid": "ICM003004003",
+              "name": "Mass Flow Controller",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM003005",
+          "classid": "ICM003005",
+          "name": "Wafer Handling",
+          "aliases": [],
+          "attributeslist": [],
+          "children": [
+            {
+              "id": "ICM003005001",
+              "classid": "ICM003005001",
+              "name": "Wafer Carrier",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            },
+            {
+              "id": "ICM003005002",
+              "classid": "ICM003005002",
+              "name": "Wafer Shipper",
+              "aliases": [],
+              "attributeslist": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "ICM003006",
+          "classid": "ICM003006",
+          "name": "Vacuum Pump Accessory",
+          "aliases": [],
+          "attributeslist": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}
