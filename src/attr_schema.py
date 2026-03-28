@@ -1,11 +1,10 @@
 """
 Canonical attribute names and normalization for each part class.
 
-SCHEMA SOURCE PRIORITY
-----------------------
-1. JSON files: input/Classes.json + input/Attributes.json  (preferred)
-2. Excel file: input/ClassificationSchema.xlsx             (fallback)
-3. Hardcoded defaults                                      (last resort)
+SCHEMA SOURCE
+-------------
+input/Classes.json + input/Attributes.json  (required)
+input/aliases.json                          (optional, loaded last — wins on conflict)
 
 PUBLIC API
 ----------
@@ -29,15 +28,12 @@ import warnings
 from pathlib import Path
 from typing import Any, Optional
 
-import openpyxl
-
 
 # ── File locations ───────────────────────────────────────────────────────────
 
 _INPUT_DIR = Path(__file__).parent.parent / "input"
 _CLASSES_JSON = _INPUT_DIR / "Classes.json"
 _ATTRS_JSON = _INPUT_DIR / "Attributes.json"
-_SCHEMA_XLSX = _INPUT_DIR / "ClassificationSchema.xlsx"
 _ALIASES_JSON = _INPUT_DIR / "aliases.json"
 
 
@@ -52,7 +48,7 @@ CLASS_TREE_CHILDREN: dict[str, list[str]] = {}  # parent name -> [child names]
 LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values
 ATTR_DICT: dict[str, dict] = {}            # attr id -> full attribute record
 _DEFAULT_SCHEMA: list[str] = []
-_SCHEMA_SOURCE: str = "none"               # "json", "excel", or "hardcoded"
+_SCHEMA_SOURCE: str = "none"               # "json" or "none"
 _CLASS_ATTR_OVERRIDES: dict[str, dict[str, str]] = {}  # class_name_lower -> {raw_key_lower -> canonical}
 
 
@@ -120,7 +116,7 @@ def _flatten_tree(
     """
     for node in nodes:
         name = node["name"]
-        class_id = node.get("classificationId", node.get("id", node.get("classid", "")))
+        class_id = node.get("classid", node.get("classificationId", node.get("id", "")))
         children = node.get("children", [])
         aliases = node.get("aliases", [])
 
@@ -157,292 +153,19 @@ def _flatten_tree(
             _flatten_tree(children, full_attrs, attr_name_by_id)
 
 
-# ── Excel loader (fallback) ─────────────────────────────────────────────────
-
-def _load_from_excel(path: Path) -> None:
-    """Load schema from ClassificationSchema.xlsx."""
-    global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, ALIASES, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
-
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-
-    # --- Sheet 1: Classes ---
-    if "Classes" not in wb.sheetnames:
-        raise ValueError("Sheet 'Classes' not found in ClassificationSchema.xlsx")
-
-    ws_classes = wb["Classes"]
-    for row in ws_classes.iter_rows(min_row=2, values_only=True):
-        if not row or not row[0]:
-            continue
-        name = str(row[0]).strip()
-        tc_id = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-        if name:
-            KNOWN_CLASSES.append(name)
-            if tc_id:
-                TC_CLASS_IDS[name] = tc_id
-
-    # --- Sheet 2: Attributes ---
-    if "Attributes" not in wb.sheetnames:
-        raise ValueError("Sheet 'Attributes' not found in ClassificationSchema.xlsx")
-
-    ws_attrs = wb["Attributes"]
-    for row in ws_attrs.iter_rows(min_row=2, values_only=True):
-        if not row or not row[0]:
-            continue
-        attr_name = str(row[0]).strip()
-        classes_str = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-        aliases_str = str(row[2]).strip() if len(row) > 2 and row[2] else ""
-
-        if not attr_name:
-            continue
-
-        # Parse applicable classes
-        if classes_str == "*":
-            applicable = set(KNOWN_CLASSES)
-        else:
-            applicable = {c.strip() for c in classes_str.split(";") if c.strip()}
-            for cls in applicable:
-                if cls not in KNOWN_CLASSES:
-                    warnings.warn(
-                        f"ClassificationSchema.xlsx: Attribute '{attr_name}' references "
-                        f"unknown class '{cls}' (not in Classes sheet)"
-                    )
-
-        for cls in applicable:
-            if cls in KNOWN_CLASSES:
-                CLASS_SCHEMAS.setdefault(cls, []).append(attr_name)
-
-        ALIASES[attr_name.lower()] = attr_name
-        if aliases_str:
-            for alias in aliases_str.split(";"):
-                alias = alias.strip().lower()
-                if alias:
-                    ALIASES[alias] = attr_name
-
-    wb.close()
-
-    _DEFAULT_SCHEMA = [
-        "Screw Size", "Inner Diameter", "Outer Diameter", "Thickness", "Length",
-        "Width", "Height", "Material", "Finish", "Hardness", "Standard",
-        "System of Measurement", "Performance", "RoHS", "REACH",
-    ]
-
-    _SCHEMA_SOURCE = "excel"
-
-
-# ── Hardcoded fallback ───────────────────────────────────────────────────────
-
-def _load_hardcoded_defaults() -> None:
-    """Fallback: populate from hardcoded data when JSON and Excel are missing."""
-    global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, ALIASES, CLASS_ALIASES
-    global CLASS_TREE_CHILDREN, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
-
-    KNOWN_CLASSES.extend([
-        # Fasteners
-        "Washer", "Lock Washer", "Split Lock Washer", "Flat Washer",
-        "Fender Washer", "Internal Tooth Lock Washer", "External Tooth Lock Washer",
-        "Nut", "Lock Nut", "Hex Nut", "Wing Nut",
-        "Bolt", "Hex Bolt", "Carriage Bolt",
-        "Screw", "Cap Screw", "Set Screw", "Machine Screw", "Socket Head Cap Screw",
-        "Hook", "Eye Bolt", "Eye Hook",
-        "Pin", "Cotter Pin", "Dowel Pin", "Roll Pin",
-        "Rivet", "Blind Rivet",
-        "Clip", "E-Clip", "C-Clip",
-        "Ring", "Retaining Ring",
-        "Bushing", "Spacer", "Standoff",
-        "Stud", "Insert", "Anchor",
-        "Spring", "Compression Spring", "Bracket",
-        # Seals & Fittings
-        "O-Ring", "Seal", "Gasket",
-        "Tube Fitting", "VCR Fitting", "Pipe Fitting",
-        # Pneumatics & Hydraulics
-        "Solenoid Valve", "Pneumatic Valve", "Pneumatic Cylinder",
-        "Flow Controller", "Pressure Regulator",
-        # Bearings & Linear Motion
-        "Ball Bearing", "Deep Groove Ball Bearing", "Angular Contact Bearing",
-        "Needle Bearing", "Crossed Roller Bearing",
-        "Linear Guide", "Linear Block", "Ball Screw",
-        # Sensors & Electrical
-        "Proximity Sensor", "Photoelectric Sensor", "Fiber Optic Sensor",
-        "Laser Sensor", "Pressure Sensor",
-        "Connector", "Terminal", "Relay", "Timer",
-        # Vacuum & Semiconductor
-        "Vacuum Valve", "Gate Valve", "Vacuum Pump Accessory",
-        "Wafer Shipper", "Wafer Carrier",
-        "Filter", "Gas Filter", "Liquid Filter",
-        "Mass Flow Controller", "Pressure Gauge", "Vacuum Gauge",
-    ])
-
-    CLASS_SCHEMAS.update({
-        "Flat Washer": [
-            "Screw Size", "Inner Diameter", "Outer Diameter", "Thickness",
-            "Material", "Finish", "Hardness", "Standard",
-            "System of Measurement", "Washer Type", "Performance",
-        ],
-        "Split Lock Washer": [
-            "Screw Size", "Inner Diameter", "Outer Diameter", "Thickness",
-            "Material", "Finish", "Hardness", "Standard",
-            "System of Measurement", "Washer Type", "Performance",
-            "RoHS", "REACH",
-        ],
-        "Hex Nut": [
-            "Thread Size", "Thread Pitch", "Width Across Flats", "Height",
-            "Material", "Finish", "Hardness", "Standard",
-            "System of Measurement", "Nut Type",
-        ],
-        "Hex Bolt": [
-            "Thread Size", "Thread Pitch", "Length", "Width Across Flats",
-            "Head Height", "Material", "Finish", "Hardness", "Grade", "Standard",
-            "System of Measurement",
-        ],
-        "Cap Screw": [
-            "Thread Size", "Thread Pitch", "Length", "Head Diameter",
-            "Head Height", "Drive Type", "Material", "Finish", "Hardness",
-            "Grade", "Standard", "System of Measurement",
-        ],
-    })
-
-    ALIASES.update({
-        "screw size": "Screw Size", "for screw size": "Screw Size",
-        "thread size": "Screw Size", "thread": "Screw Size",
-        "nominal thread size": "Screw Size", "bolt size": "Screw Size",
-        "id": "Inner Diameter", "inner diameter": "Inner Diameter",
-        "inner dia": "Inner Diameter", "bore diameter": "Inner Diameter",
-        "bore": "Inner Diameter", "hole diameter": "Inner Diameter",
-        "od": "Outer Diameter", "outer diameter": "Outer Diameter",
-        "outside diameter": "Outer Diameter",
-        "thk": "Thickness", "thickness": "Thickness",
-        "height": "Height", "thickness range": "Thickness",
-        "material": "Material", "material type": "Material",
-        "finish": "Finish", "coating": "Finish", "surface finish": "Finish",
-        "plating": "Finish", "surface treatment": "Finish",
-        "standard": "Standard", "specifications met": "Standard",
-        "spec": "Standard", "norm": "Standard",
-        "system of measurement": "System of Measurement",
-        "hardness": "Hardness", "hardness rating": "Hardness",
-        "performance": "Performance",
-        "washer type": "Washer Type", "type": "Washer Type",
-        "rohs": "RoHS", "reach": "REACH",
-        "screw/bolt size": "Screw Size", "inside diameter": "Inner Diameter",
-        "overall thickness": "Thickness", "body material": "Material",
-        "material - body": "Material", "drive style": "Drive Type",
-        "drive type": "Drive Type", "overall length": "Length",
-        "thread pitch - metric": "Thread Pitch",
-        "threads per inch": "Thread Pitch",
-    })
-
-    CLASS_ALIASES.update({
-        "dgbb": "Deep Groove Ball Bearing",
-        "deep groove": "Deep Groove Ball Bearing",
-        "radial ball bearing": "Deep Groove Ball Bearing",
-        "angular contact": "Angular Contact Bearing",
-        "needle roller": "Needle Bearing",
-        "crossed roller": "Crossed Roller Bearing",
-        "shcs": "Socket Head Cap Screw",
-        "socket head cap": "Socket Head Cap Screw",
-        "socket cap screw": "Socket Head Cap Screw",
-        "split lock": "Split Lock Washer",
-        "spring lock washer": "Split Lock Washer",
-        "int tooth": "Internal Tooth Lock Washer",
-        "ext tooth": "External Tooth Lock Washer",
-        "fender": "Fender Washer",
-        "hex cap screw": "Hex Bolt",
-        "hex head bolt": "Hex Bolt",
-        "carriage": "Carriage Bolt",
-        "nylon insert": "Lock Nut",
-        "nyloc": "Lock Nut",
-        "pop rivet": "Blind Rivet",
-        "cotter": "Cotter Pin",
-        "dowel": "Dowel Pin",
-        "roll pin": "Roll Pin",
-        "spring pin": "Roll Pin",
-        "e-clip": "E-Clip",
-        "c-clip": "C-Clip",
-        "snap ring": "Retaining Ring",
-        "circlip": "Retaining Ring",
-        "oring": "O-Ring",
-        "o ring": "O-Ring",
-        "compression fitting": "Tube Fitting",
-        "vcr fitting": "VCR Fitting",
-        "solenoid valve": "Solenoid Valve",
-        "air cylinder": "Pneumatic Cylinder",
-        "round cylinder": "Pneumatic Cylinder",
-        "compact cylinder": "Pneumatic Cylinder",
-        "inductive sensor": "Proximity Sensor",
-        "fiber sensor": "Fiber Optic Sensor",
-        "fiber unit": "Fiber Optic Sensor",
-        "pressure transducer": "Pressure Sensor",
-        "guide block": "Linear Block",
-        "ball screw": "Ball Screw",
-    })
-
-    CLASS_TREE_CHILDREN.update({
-        "Washer": ["Flat Washer", "Fender Washer", "Lock Washer"],
-        "Lock Washer": ["Split Lock Washer", "Internal Tooth Lock Washer",
-                        "External Tooth Lock Washer"],
-        "Nut": ["Hex Nut", "Lock Nut", "Wing Nut"],
-        "Bolt": ["Hex Bolt", "Carriage Bolt", "Eye Bolt"],
-        "Screw": ["Cap Screw", "Set Screw", "Machine Screw"],
-        "Cap Screw": ["Socket Head Cap Screw"],
-        "Pin": ["Cotter Pin", "Dowel Pin", "Roll Pin"],
-        "Rivet": ["Blind Rivet"],
-        "Clip": ["E-Clip", "C-Clip"],
-        "Ring": ["Retaining Ring"],
-        "Hook": ["Eye Hook"],
-        "Spring": ["Compression Spring"],
-        "Seal": ["O-Ring", "Gasket"],
-        "Fitting": ["Tube Fitting", "VCR Fitting", "Pipe Fitting"],
-        "Bearing": ["Ball Bearing", "Needle Bearing", "Crossed Roller Bearing"],
-        "Ball Bearing": ["Deep Groove Ball Bearing", "Angular Contact Bearing"],
-        "Linear Motion": ["Linear Guide", "Linear Block", "Ball Screw"],
-        "Sensor": ["Proximity Sensor", "Photoelectric Sensor", "Fiber Optic Sensor",
-                    "Laser Sensor", "Pressure Sensor"],
-        "Connector": ["Terminal", "Relay"],
-        "Valve": ["Solenoid Valve", "Pneumatic Valve", "Vacuum Valve", "Gate Valve"],
-        "Pneumatic": ["Pneumatic Cylinder", "Pressure Regulator", "Flow Controller"],
-        "Filter": ["Gas Filter", "Liquid Filter"],
-        "Gauge": ["Pressure Gauge", "Vacuum Gauge", "Mass Flow Controller"],
-        "Wafer Handling": ["Wafer Carrier", "Wafer Shipper"],
-    })
-
-    _DEFAULT_SCHEMA = [
-        "Screw Size", "Inner Diameter", "Outer Diameter", "Thickness", "Length",
-        "Width", "Height", "Material", "Finish", "Hardness", "Standard",
-        "System of Measurement", "Performance", "RoHS", "REACH",
-    ]
-
-    _SCHEMA_SOURCE = "hardcoded"
-
-
 # ── Load schema on import ────────────────────────────────────────────────────
 
 def _load_schema() -> None:
-    """Load schema: JSON first, then Excel, then hardcoded defaults."""
-    # Priority 1: JSON files
+    """Load schema from JSON files (Classes.json + Attributes.json), then aliases.json."""
     if _CLASSES_JSON.exists() and _ATTRS_JSON.exists():
         try:
             _load_from_json(_CLASSES_JSON, _ATTRS_JSON)
-            return
         except Exception as e:
-            warnings.warn(f"Failed to load JSON schema ({e}), trying Excel fallback")
-
-    # Priority 2: Excel
-    if _SCHEMA_XLSX.exists():
-        try:
-            _load_from_excel(_SCHEMA_XLSX)
-            return
-        except Exception as e:
-            warnings.warn(
-                f"Failed to load ClassificationSchema.xlsx ({e}), using hardcoded defaults"
-            )
+            warnings.warn(f"Failed to load JSON schema: {e}")
     else:
-        if not (_CLASSES_JSON.exists() and _ATTRS_JSON.exists()):
-            warnings.warn(
-                f"No schema files found (JSON or Excel), using hardcoded defaults"
-            )
-
-    # Priority 3: Hardcoded
-    _load_hardcoded_defaults()
-
+        warnings.warn(
+            "Schema JSON not found. Expected: input/Classes.json + input/Attributes.json"
+        )
     # Always load aliases.json last — wins on conflict with all other sources
     _load_aliases_json()
 
@@ -470,12 +193,21 @@ def _load_aliases_json() -> None:
     attr_names = {a["name"] for a in ATTR_DICT.values()}
 
     # attribute_aliases: canonical → [aliases]
-    for canonical, aliases in data.get("attribute_aliases", {}).items():
-        if canonical not in attr_names and ATTR_DICT:
-            warnings.warn(f"aliases.json: '{canonical}' not found in Attributes.json — check spelling")
-        ALIASES[canonical.lower()] = canonical
-        for alias in aliases:
-            ALIASES[alias.lower()] = canonical
+    for canonical, alias_list in data.get("attribute_aliases", {}).items():
+        # Auto-correct canonical to actual schema attr name (handles case mismatches)
+        actual = canonical
+        if ATTR_DICT and canonical not in attr_names:
+            ci = next((n for n in attr_names if n.lower() == canonical.lower()), None)
+            if ci:
+                actual = ci  # correct casing mismatch silently
+            else:
+                warnings.warn(
+                    f"aliases.json: '{canonical}' not in Attributes.json — skipped"
+                )
+                continue  # skip dead aliases entirely
+        ALIASES[actual.lower()] = actual
+        for alias in alias_list:
+            ALIASES[alias.lower()] = actual
 
     # class_aliases: canonical → [aliases]
     for canonical, aliases in data.get("class_aliases", {}).items():
@@ -676,6 +408,17 @@ def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
             str_val = _normalize_to_lov(str_val, LOV_MAP[canonical])
 
         normalized[canonical] = str_val
+
+    # Step 2b: collapse keys that differ only by case
+    deduped: dict[str, str] = {}
+    for k, v in normalized.items():
+        existing = next((ek for ek in deduped if ek.lower() == k.lower()), None)
+        if existing:
+            if not deduped[existing] and v:  # fill empty slot only
+                deduped[existing] = v
+        else:
+            deduped[k] = v
+    normalized = deduped
 
     # Step 3: order by schema, then append any extras not in schema
     ordered: dict[str, str] = {}
