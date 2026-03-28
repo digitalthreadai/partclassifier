@@ -85,32 +85,63 @@ class PLMXMLParser:
 
     def _parse_keylovs(self) -> None:
         """
-        Find all <KeyLOV> elements and extract keyLOVId -> values mapping.
+        Find all <KeyLOV> elements and extract id -> values mapping.
 
-        Populates self.keylovs with structure:
-            { "lov_001": { "keyLOVId": "LOV_23991", "name": "Material LOV",
-                           "values": ["StainlessSteel", "CarbonSteel"] } }
+        Handles two formats:
+        - Legacy: name as XML attribute, <Values><Value>text</Value></Values>
+        - DictionaryAttribute style: <Name> child element,
+          <Values> with interleaved <Key>/<Value> siblings
+
+        Populates self.keylovs keyed by BOTH the element's id attribute AND
+        its keyLOVId attribute so lookups work regardless of which one is
+        referenced by FormatKeyLOV.keyLOVId.
+
+        Entry structure:
+            { "keyLOVId": "LOV_23991", "name": "Material LOV",
+              "values": ["StainlessSteel", "CarbonSteel"] }
         """
         print("[PARSE] Scanning for KeyLOV elements...")
         count = 0
         for lov_elem in self.root.iter("KeyLOV"):
             lov_id = lov_elem.get("id", "")
             lov_key_id = lov_elem.get("keyLOVId", "")
-            lov_name = lov_elem.get("name", "")
 
+            # Name: prefer child <Name> element, fall back to XML attribute
+            name_elem = lov_elem.find("Name")
+            if name_elem is not None and name_elem.text:
+                lov_name = name_elem.text.strip()
+            else:
+                lov_name = lov_elem.get("name", "")
+
+            # Values: handle both formats
             values = []
             values_container = lov_elem.find("Values")
             if values_container is not None:
-                for val_elem in values_container.findall("Value"):
-                    text = val_elem.text
-                    if text:
-                        values.append(text.strip())
+                # New format: interleaved <Key>/<Value> siblings — take Value text
+                val_elems = values_container.findall("Value")
+                if val_elems:
+                    for val_elem in val_elems:
+                        if val_elem.text:
+                            values.append(val_elem.text.strip())
+                else:
+                    # Legacy format: <Value>text</Value> only (same tag, covered above)
+                    # Key-only fallback: use <Key> text if no <Value> found
+                    for key_elem in values_container.findall("Key"):
+                        if key_elem.text:
+                            values.append(key_elem.text.strip())
 
-            self.keylovs[lov_id] = {
+            entry = {
                 "keyLOVId": lov_key_id,
                 "name": lov_name,
                 "values": values,
             }
+
+            # Index by element id AND keyLOVId so FormatKeyLOV refs resolve either way
+            if lov_id:
+                self.keylovs[lov_id] = entry
+            if lov_key_id and lov_key_id != lov_id:
+                self.keylovs[lov_key_id] = entry
+
             count += 1
 
         print(f"[PARSE] Found {count} KeyLOV(s)")
@@ -228,6 +259,77 @@ class PLMXMLParser:
                 count += 1
 
         print(f"[PARSE] Found {count} attribute definition(s)")
+
+    def _parse_dictionary_attributes(self) -> None:
+        """
+        Parse <DictionaryAttribute> elements which embed their LOV inline.
+
+        Structure (after namespace stripping):
+
+            DictionaryAttribute
+              Name                       ← attribute display name (child element)
+              Format
+                FormatKeyLOV             ← keyLOVId attribute → references a KeyLOV section
+
+            ... (separate section, not nested inside DictionaryAttribute) ...
+
+            KeyLOV                       ← keyed by id or keyLOVId
+              Name                       ← LOV display name
+              Values
+                Key                      ← LOV key (code)
+                Value                    ← LOV display value
+                Key
+                Value
+                ...
+
+        Populates self.attributes, adding lovName field when present.
+        """
+        print("[PARSE] Scanning for DictionaryAttribute elements...")
+        count = 0
+
+        for attr_elem in self.root.iter("DictionaryAttribute"):
+            attr_id = attr_elem.get("id", "")
+            if not attr_id or attr_id in self.attributes:
+                continue
+
+            # Name is a child element, not an XML attribute
+            name_elem = attr_elem.find("Name")
+            name = name_elem.text.strip() if name_elem is not None and name_elem.text else attr_elem.get("name", "")
+            short_name = attr_elem.get("shortName", "")
+            unit_base = attr_elem.get("unitBase", "")
+
+            # keyLOVId comes from Format > FormatKeyLOV attribute;
+            # the actual LOV data lives in a separate top-level KeyLOV section.
+            lov_values: list[str] = []
+            key_lov_id = ""
+            lov_name = ""
+
+            fmt_elem = attr_elem.find("Format")
+            if fmt_elem is not None:
+                fklov_elem = fmt_elem.find("FormatKeyLOV")
+                if fklov_elem is not None:
+                    key_lov_id = fklov_elem.get("keyLOVId", "")
+                    # Resolve against the separately-parsed KeyLOV section
+                    if key_lov_id and key_lov_id in self.keylovs:
+                        lov_data = self.keylovs[key_lov_id]
+                        lov_values = lov_data["values"]
+                        lov_name = lov_data["name"]
+
+            self.attributes[attr_id] = {
+                "id": attr_id,
+                "name": name,
+                "shortname": short_name,
+                "description": "",
+                "aliases": [],
+                "unitOfMeasure": [unit_base] if unit_base else [],
+                "range": None,
+                "lov": lov_values,
+                "keyLOVID": key_lov_id,
+                "lovName": lov_name,
+            }
+            count += 1
+
+        print(f"[PARSE] Found {count} DictionaryAttribute(s)")
 
     def _parse_classes(self) -> None:
         """
@@ -487,6 +589,7 @@ class PLMXMLParser:
         self._parse_keylovs()
         self._parse_formats()
         self._parse_attributes()
+        self._parse_dictionary_attributes()
         self._merge_sml()
         self._parse_classes()
         tree = self._build_tree(self.flat_classes)
@@ -518,6 +621,8 @@ class PLMXMLParser:
                 entry["lov"] = attr["lov"]
             if attr["keyLOVID"]:
                 entry["keyLOVID"] = attr["keyLOVID"]
+            if attr.get("lovName"):
+                entry["lovName"] = attr["lovName"]
             clean_attrs.append(entry)
 
         attrs_json = {

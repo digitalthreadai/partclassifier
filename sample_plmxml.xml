@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema"
+        schemaVersion="6.0"
+        author="plmxml_to_json.py demo generator">
+
+  <!-- ============ KeyLOVs ============ -->
+  <KeyLOV id="lov_mat" keyLOVId="LOV_MATERIAL" name="Material LOV">
+    <Values>
+      <Value key="1">StainlessSteel</Value>
+      <Value key="2">CarbonSteel</Value>
+      <Value key="3">Aluminum</Value>
+      <Value key="4">Brass</Value>
+      <Value key="5">Titanium</Value>
+    </Values>
+  </KeyLOV>
+
+  <KeyLOV id="lov_fin" keyLOVId="LOV_FINISH" name="Finish LOV">
+    <Values>
+      <Value key="1">Zinc</Value>
+      <Value key="2">BlackOxide</Value>
+      <Value key="3">Passivated</Value>
+      <Value key="4">Anodized</Value>
+    </Values>
+  </KeyLOV>
+
+  <!-- ============ Formats ============ -->
+  <Format id="fmt_diam" keyLOVRef="#lov_mat" minValue="0" maxValue="500"/>
+  <Format id="fmt_hard" keyLOVRef="#lov_fin" minValue="10" maxValue="70"/>
+
+  <!-- ============ Attributes ============ -->
+  <ClassificationAttribute id="23990" name="Inner Diameter" shortName="ID" unitBase="mm" formatRef="#fmt_diam">
+    <Description>Inner diameter measurement</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23991" name="Outer Diameter" shortName="OD" unitBase="mm">
+    <Description>Outer diameter measurement</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23992" name="Material" shortName="MAT" formatRef="#fmt_diam">
+    <Description>Material composition</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23993" name="Hardness" shortName="HRC" unitBase="HRC" formatRef="#fmt_hard">
+    <Description>Rockwell hardness C scale</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23994" name="Voltage Rating" shortName="V" unitBase="V">
+    <Description>Maximum operating voltage</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23995" name="Thread Size" shortName="THR" unitBase="mm">
+    <Description>Thread diameter and pitch</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23996" name="Length" shortName="LEN" unitBase="mm">
+    <Description>Overall length</Description>
+  </ClassificationAttribute>
+
+  <ClassificationAttribute id="23997" name="Vacuum Level" shortName="VAC" unitBase="mbar">
+    <Description>Operating vacuum pressure</Description>
+  </ClassificationAttribute>
+
+  <!-- ============ Classes (flat, hierarchy via parent) ============ -->
+
+  <!-- Root: Mechanical -->
+  <AdminClass id="id_mech" classid="ICM001">
+    <name>Mechanical</name>
+    <parent></parent>
+    <attributes>
+      <attribute ref="23992"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Mechanical > Fastener -->
+  <AdminClass id="id_fast" classid="ICM001001">
+    <name>Fastener</name>
+    <parent>ICM001</parent>
+    <attributes>
+      <attribute ref="23992"/>
+      <attribute ref="23993"/>
+      <attribute ref="23996"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Mechanical > Fastener > Bolt -->
+  <AdminClass id="id_bolt" classid="ICM001001001">
+    <name>Bolt</name>
+    <parent>ICM001001</parent>
+    <attributes>
+      <attribute ref="23995"/>
+      <attribute ref="23996"/>
+      <attribute ref="23992"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Mechanical > Fastener > Washer -->
+  <AdminClass id="id_wash" classid="ICM001001002">
+    <name>Washer</name>
+    <parent>ICM001001</parent>
+    <attributes>
+      <attribute ref="23990"/>
+      <attribute ref="23991"/>
+      <attribute ref="23992"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Mechanical > Fastener > Washer > Flat Washer -->
+  <AdminClass id="id_flat" classid="ICM001001002001">
+    <name>Flat Washer</name>
+    <parent>ICM001001002</parent>
+    <attributes>
+      <attribute ref="23990"/>
+      <attribute ref="23991"/>
+      <attribute ref="23993"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Mechanical > Bearing -->
+  <AdminClass id="id_bear" classid="ICM001002">
+    <name>Bearing</name>
+    <parent>ICM001</parent>
+    <attributes>
+      <attribute ref="23990"/>
+      <attribute ref="23991"/>
+      <attribute ref="23992"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Root: Electrical -->
+  <AdminClass id="id_elec" classid="ICM002">
+    <name>Electrical</name>
+    <parent></parent>
+    <attributes>
+      <attribute ref="23994"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Electrical > Sensor -->
+  <AdminClass id="id_sens" classid="ICM002001">
+    <name>Sensor</name>
+    <parent>ICM002</parent>
+    <attributes>
+      <attribute ref="23994"/>
+      <attribute ref="23992"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Electrical > Connector -->
+  <AdminClass id="id_conn" classid="ICM002002">
+    <name>Connector</name>
+    <parent>ICM002</parent>
+    <attributes>
+      <attribute ref="23994"/>
+      <attribute ref="23992"/>
+    </attributes>
+  </AdminClass>
+
+  <!-- Root: Vacuum -->
+  <AdminClass id="id_vacu" classid="ICM003">
+    <name>Vacuum</name>
+    <parent></parent>
+    <attributes>
+      <attribute ref="23997"/>
+    </attributes>
+  </AdminClass>
+
+</PLMXML>
