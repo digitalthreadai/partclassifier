@@ -68,7 +68,7 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
     attr_by_id: dict[str, dict] = {}
     attr_name_by_id: dict[str, str] = {}
 
-    for attr in attrs_data["attributes"]:
+    for attr in attrs_data.get("attributes", attrs_data.get("tree", [])):
         aid = str(attr["id"])
         attr_by_id[aid] = attr
         attr_name_by_id[aid] = attr["name"]
