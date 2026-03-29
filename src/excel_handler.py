@@ -202,7 +202,9 @@ class ExcelHandler:
 
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = cls[:31]  # Excel sheet name limit
+        # Excel sheet names can't contain / \ * ? : [ ]
+        safe_title = cls.translate(str.maketrans("/\\*?:[]", "-------"))
+        ws.title = safe_title[:31]
 
         # Write headers with color coding
         for col_idx, header in enumerate(all_columns, start=1):
