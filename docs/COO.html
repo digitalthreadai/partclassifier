@@ -230,6 +230,11 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <div class="module">excel_handler.py</div>
       <p>Groups parts by type. One .xlsx per class with TC Class ID column for Teamcenter integration. Consistent canonical column headers, schema-ordered. Styled headers (blue fill, white bold).</p>
     </div>
+    <div class="feat">
+      <h4>Quality Metrics &amp; Reporting</h4>
+      <div class="module">confidence.py, report_generator.py</div>
+      <p>6 per-part quality metrics appended to every Excel output: Extraction Coverage % (TC schema completeness), Source Reliability % (weighted source quality), Classification Confidence % (classification certainty), Source Type (API/Stealth/Web/etc.), LOV Compliance % (value-list conformance), Validation Action (Confirmed/Reclassified/Abstained). HTML executive summary report (<code>run_summary.html</code>) with KPI cards, per-class averages, confidence distribution, and low-confidence parts list. Token usage tracking across runs.</p>
+    </div>
   </div>
 
   <h2 id="execution-modes">Execution Modes</h2>
@@ -295,7 +300,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <div class="feat">
       <h4>Metrics Tracking</h4>
       <div class="module">metrics.py</div>
-      <p>Quality metrics, cache hits, regex/LLM agreement rate, LLM call counts, timing (seconds/part). Appends to metrics_history.json for trend analysis across runs.</p>
+      <p>Quality metrics, cache hits, regex/LLM agreement rate, LLM call counts, timing (seconds/part), token usage tracking. Appends to metrics_history.json for trend analysis across runs.</p>
     </div>
     <div class="feat">
       <h4>CloakBrowser Stealth</h4>
@@ -443,6 +448,8 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
     ├── attr_schema.py         # JSON schema (93 classes, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
+    ├── confidence.py          # Per-part quality metrics (6 columns)
+    ├── report_generator.py    # HTML executive summary report generator
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
     └── excel_handler.py       # Input reader + per-class writer + TC Class ID</pre>

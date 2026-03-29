@@ -159,6 +159,7 @@ python main.py --clear-cache       # delete cache before run
     <tr><td>5. Validate</td><td>Attribute-fit validation: check blind-extracted attributes against class schema, flag mismatches, reclassify if needed</td><td><code>class_validator.py</code></td></tr>
     <tr><td>6. Extract</td><td>LLM validates pre-extracted values + fills gaps via hybrid prompt (priority schema hints + maximize coverage), temperature=0. Unit conversion with as-is mode support</td><td><code>attribute_extractor.py</code></td></tr>
     <tr><td>7. Write</td><td>Normalize 500+ alias mappings &rarr; canonical names, schema-ordered per class. Write per-class Excel with TC Class ID, canonical columns, styled headers</td><td><code>attr_schema.py</code>, <code>excel_handler.py</code></td></tr>
+    <tr><td>8. Metrics</td><td>Compute 6 per-part quality metrics (extraction coverage, source reliability, classification confidence, source type, LOV compliance, validation action). Generate HTML executive summary report</td><td><code>confidence.py</code>, <code>report_generator.py</code></td></tr>
   </table>
 
   <h2 id="execution-modes">Execution Modes</h2>
@@ -307,8 +308,11 @@ python plmxml_to_json.py --demo                             # generate sample ou
     <li><code>Part Class</code> -- the classified category</li>
     <li><code>TC Class ID</code> -- Teamcenter classification identifier</li>
     <li><code>Source URL</code> -- the web page or API the attributes came from</li>
+    <li>6 quality metric columns: <code>Extraction Coverage %</code>, <code>Source Reliability %</code>, <code>Classification Confidence %</code>, <code>Source Type</code>, <code>LOV Compliance %</code>, <code>Validation Action</code></li>
     <li>Extracted attribute columns specific to that class (canonical names, schema-ordered)</li>
   </ul>
+
+  <p>An HTML executive summary report (<code>output/run_summary.html</code>) is also generated with KPI cards, per-class averages, confidence distribution, and low-confidence parts list.</p>
 
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>output/
   Flat Washer.xlsx
@@ -390,6 +394,8 @@ python plmxml_to_json.py --demo                             # generate sample ou
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
     ├── attr_schema.py         # JSON schema (93 classes, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
+    ├── confidence.py          # Per-part quality metrics (6 columns)
+    ├── report_generator.py    # HTML executive summary report generator
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
     └── excel_handler.py       # Input reader + per-class writer + TC Class ID</pre>

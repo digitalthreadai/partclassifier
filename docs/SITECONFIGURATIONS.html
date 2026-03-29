@@ -513,7 +513,21 @@ python main_cc.py --workers 1    # sequential mode (for debugging)</pre>
   Deep Groove Ball Bearing.xlsx
   Tube Fitting.xlsx</pre>
 
-  <p>Each file contains: original input columns + Part Class + TC Class ID (looked up from classid in <code>schema/Classes.json</code>, checked first before any other source) + Source URL + extracted attributes with canonical column names (schema-ordered). Unit of Measure conversion respects an as-is mode: if the input UoM matches the source data, values are kept as-is without conversion.</p>
+  <p>Each file contains: original input columns + Part Class + TC Class ID (looked up from classid in <code>schema/Classes.json</code>, checked first before any other source) + Source URL + 6 quality metric columns + extracted attributes with canonical column names (schema-ordered). Unit of Measure conversion respects an as-is mode: if the input UoM matches the source data, values are kept as-is without conversion.</p>
+
+  <h3>Quality Metric Columns (6)</h3>
+  <table>
+    <tr><th>Column</th><th>Description</th></tr>
+    <tr><td><code>Extraction Coverage %</code></td><td>Percentage of TC schema attributes that were successfully extracted for this part. Higher = more complete attribute coverage.</td></tr>
+    <tr><td><code>Source Reliability %</code></td><td>Weighted reliability score based on data source type (40%), manufacturer part number presence in content (20%), extraction coverage (20%), and regex/LLM agreement (20%).</td></tr>
+    <tr><td><code>Classification Confidence %</code></td><td>Weighted classification certainty based on classify source (40%), attribute-fit validation result (40%), and whether the class exists in the JSON schema (20%).</td></tr>
+    <tr><td><code>Source Type</code></td><td>How the spec data was obtained: API, Stealth, Web (cached), Web, Part Name, or None.</td></tr>
+    <tr><td><code>LOV Compliance %</code></td><td>Percentage of LOV-governed attributes whose extracted values match a valid Teamcenter List of Values entry. 100% if no LOV attributes were extracted.</td></tr>
+    <tr><td><code>Validation Action</code></td><td>Outcome of attribute-fit validation: Confirmed, Reclassified, Refined, Abstained, or No validation.</td></tr>
+  </table>
+
+  <h3>HTML Executive Summary (<code>output/run_summary.html</code>)</h3>
+  <p>A dark-themed HTML report generated after each run with KPI cards (classified %, average coverage, average confidence), per-class breakdown table, confidence distribution bands, low-confidence parts list, and run details (timing, cache stats, token usage).</p>
 
   <h2 id="caches">Cache Management</h2>
 

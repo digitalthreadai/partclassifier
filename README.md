@@ -67,7 +67,7 @@ python main.py --fresh             # clear cache + progress, start fresh
        |
 6. Class-aware LLM extraction (with validated class + regex pre-extraction)
        |
-7. Write per-class Excel output with TC Class ID
+7. Write per-class Excel output with TC Class ID + HTML executive summary
 ```
 
 For each part in the input Excel:
@@ -78,7 +78,7 @@ For each part in the input Excel:
 4. **Class-blind LLM extraction** extracts ALL specs without class bias, breaking the circular dependency between classification and extraction.
 5. **Validates** classification via attribute-fit scoring against CLASS_SCHEMAS. Dynamically computes universal attrs (>90% of classes). Reclassifies only with strong evidence (MIN_ADVANTAGE=2). Abstains when uncertain.
 6. **Class-aware extraction** with validated class + regex pre-extraction + unit handling. Supports inches, mm, or as-is mode (preserves original units when not specified).
-7. **Normalizes** attributes via 500+ alias mappings to canonical names and **writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns.
+7. **Normalizes** attributes via 500+ alias mappings to canonical names and **writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns. Also generates an HTML executive summary report (`output/run_summary.html`).
 
 ---
 
@@ -279,6 +279,13 @@ Each output Excel contains:
 - `TC Class ID` -- Teamcenter classification identifier
 - `Source URL` -- the web page or API the attributes came from
 - Extracted attribute columns specific to that class (canonical names, schema-ordered)
+- 6 quality metric columns (color-coded: green >=80%, amber 50-79%, red <50%):
+  - `Extraction Coverage %` -- TC schema attrs matched / total
+  - `Source Reliability %` -- weighted source quality score
+  - `Classification Confidence %` -- weighted classification confidence
+  - `Source Type` -- API / Stealth / Web / Part Name
+  - `LOV Compliance %` -- LOV-governed attrs with valid values
+  - `Validation Action` -- Confirmed / Reclassified / Abstained
 
 ```
 output/
@@ -286,7 +293,10 @@ output/
   Split Lock Washer.xlsx
   Deep Groove Ball Bearing.xlsx
   Tube Fitting.xlsx
+  run_summary.html          # Dark-themed HTML executive summary
 ```
+
+`output/run_summary.html` -- dark-themed HTML executive summary with KPIs, per-class breakdown, confidence distribution, low-confidence parts, and run details (including total tokens and avg tokens/part).
 
 ---
 
@@ -304,6 +314,7 @@ output/
 - **Validation retry:** re-extraction for missing attrs when >50% schema attrs unfilled
 - **Fallback to part name:** mines dimensions from part name when no web content found
 - **CloakBrowser:** 33 C++ patches, bypasses Cloudflare/reCAPTCHA/FingerprintJS/Turnstile
+- **Token tracking:** accumulated prompt + completion tokens from OpenAI and Anthropic API responses
 - **Metrics tracking:** quality, cache effectiveness, regex/LLM agreement per run
 - **Resume capability:** checkpoint after each part via progress.json
 - **Windows UTF-8 encoding fix:** prevents encoding errors in output
@@ -365,6 +376,8 @@ PartClassifier/
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
     ├── attr_schema.py         # JSON schema loader (93 classes, aliases, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
+    ├── confidence.py          # Per-part quality metrics (6 functions)
+    ├── report_generator.py    # HTML executive summary generator
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
     └── excel_handler.py       # Input reader + per-class writer + TC Class ID

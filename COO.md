@@ -260,7 +260,13 @@ Input Excel
 - CLI modes: `--plmxml` (mandatory), `--sml` (optional), `--output`, `--dry-run`, `--merge`, `--demo`
 - Zero external dependencies (stdlib only)
 
-#### 22. Schema Generator
+#### 22. Quality Metrics & Reporting
+- **Entry:** `src/confidence.py`, `src/report_generator.py`, `src/llm_client.py` (token tracking)
+- **6 per-part Excel columns:** Extraction Coverage %, Source Reliability %, Classification Confidence %, Source Type, LOV Compliance %, Validation Action
+- **HTML executive summary report** (`output/run_summary.html`): KPI cards, per-class breakdown table, confidence distribution chart, low-confidence parts list, run details with token usage
+- Token tracking integrated into `LLMClient` -- counts prompt/completion tokens across all LLM calls per run
+
+#### 23. Schema Generator
 - **Entry:** `generate_schema.py`
 - Reads `schema/Classes.json` + `schema/Attributes.json`, uses the configured LLM (same `.env` as `main.py`) to auto-generate `schema/aliases.json` + `schema/classification_hints.json`
 - Generates attribute aliases and class aliases via batched LLM passes
@@ -313,7 +319,7 @@ Input Excel
 | v1.6 | Excel-based schema (81 classes), TC Class ID, hybrid prompts, 8th provider | Done |
 | v1.7 | JSON schema (93 classes), PLMXML converter, attribute inheritance, LOV normalization, adaptive search, fuzzy column matching | Done |
 | v1.8 | Azure AI Foundry provider, DictionaryAttribute + KeyLOV PLMXML parsing, aliases.json configurable system, generate_aliases.py LLM generator, color-coded Excel output, classificationId TC Class ID, shortname auto-alias, fuzzy attr matching, class-aware attribute overrides | Done |
-| v2.0 | Classification rearchitecture: class-blind extraction + attribute-fit validation, schema/ directory, generate_schema.py (replaces generate_aliases.py), classification_hints.json, classid priority, as-is unit mode, removed Excel fallback + hardcoded defaults | Done |
+| v2.0 | Classification rearchitecture: class-blind extraction + attribute-fit validation, schema/ directory, generate_schema.py (replaces generate_aliases.py), classification_hints.json, classid priority, as-is unit mode, removed Excel fallback + hardcoded defaults, per-part confidence metrics (6 Excel columns), HTML executive summary report, token tracking | Done |
 | v2.1 | Teamcenter direct import, additional part classes | Planned |
 
 ## File Structure
@@ -364,6 +370,8 @@ PartClassifier/
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
     ├── attr_schema.py         # Schema loader + aliases.json + fuzzy matching
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
+    ├── confidence.py          # Per-part quality metrics (coverage, reliability, confidence)
+    ├── report_generator.py    # HTML executive summary generator (output/run_summary.html)
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
     └── excel_handler.py       # Input reader + per-class output writer + TC Class ID
