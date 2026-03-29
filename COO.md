@@ -4,9 +4,9 @@
 
 PartClassifier is a production-grade AI agent for mechanical part classification and attribute extraction, built for industrial engineering teams managing large inventories of fasteners, bearings, fittings, sensors, and other mechanical components. It automates the tedious manual process of looking up part specifications from distributor websites, extracting structured attributes, and preparing classification-ready Excel outputs for Teamcenter PLM import.
 
-The agent combines deterministic pattern matching, regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs, stealth web scraping, and intelligent caching -- to process thousands of parts with minimal human intervention. A six-step pipeline ensures maximum accuracy: multi-tier search, deterministic classification from web content (95% accuracy), regex pre-extraction, LLM validation with hybrid prompts (priority schema hints + maximize coverage), canonical normalization via 500+ alias mappings, and per-class Excel output with TC Class ID mapping. A JSON-based schema (`Classes.json` + `Attributes.json`) provides Teamcenter-compatible hierarchical class trees with attribute inheritance and LOV normalization, importable from Teamcenter PLMXML exports via the included `plmxml_to_json.py` converter.
+The agent combines deterministic pattern matching, regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs, stealth web scraping, and intelligent caching -- to process thousands of parts with minimal human intervention. A seven-step pipeline ensures maximum accuracy: multi-tier search, deterministic classification from web content, class-blind LLM extraction (no class bias -- extracts ALL specs), attribute-fit validation against CLASS_SCHEMAS (reclassifies only with strong evidence, abstains when uncertain), class-aware LLM extraction, canonical normalization via 500+ alias mappings, and per-class Excel output with TC Class ID mapping. Universal attributes are dynamically computed (present in >90% of classes) and excluded from scoring -- zero hardcoded logic, all dynamic from schema. A JSON-based schema (`Classes.json` + `Attributes.json`) provides Teamcenter-compatible hierarchical class trees with attribute inheritance and LOV normalization, importable from Teamcenter PLMXML exports via the included `plmxml_to_json.py` converter.
 
-**Key stats:** 7,031 LOC across 18 modules, 9 LLM providers, 3 distributor APIs, 93 part classes, 46 attributes, JSON-based Teamcenter-compatible schema with attribute inheritance and LOV normalization, configurable aliases.json system, PLMXML import converter with DictionaryAttribute + KeyLOV support, 21 production-ready bug fixes.
+**Key stats:** 7,031 LOC across 19 modules, 9 LLM providers, 3 distributor APIs, 93 part classes, 46 attributes, JSON-based Teamcenter-compatible schema with attribute inheritance and LOV normalization, class-blind extraction + attribute-fit validation pipeline, configurable aliases.json system, PLMXML import converter with DictionaryAttribute + KeyLOV support, 21 production-ready bug fixes.
 
 ## Competitive Landscape
 
@@ -48,14 +48,18 @@ Input Excel
 [Content Cleaner] --> HTML table extraction + smart truncation (3K/5K/8K limits)
     |
     v
-[Deterministic Classification] --> breadcrumbs, category labels, URL paths, aliases
-    |  (95% accuracy, fallback: LLM cache -> batch LLM classify)
+[Initial Classification] --> breadcrumbs, category labels, URL paths, aliases
+    |  (fallback: LLM cache -> batch LLM classify)
     v
-[Regex Pre-Extraction] --> tables, key-value patterns, standards (DIN/ASME/ISO), materials
+[Class-Blind LLM Extraction] --> extracts ALL specs with no class context (unbiased)
     |
     v
-[LLM Validation + Gap Fill] --> hybrid prompt with priority schema hints + maximize coverage
-    |                            temperature=0, deterministic, retry for missing attrs
+[Attribute-Fit Validation] --> scores overlap against CLASS_SCHEMAS for initial + candidates
+    |                           universal attrs (>90% of classes) auto-excluded from scoring
+    |                           reclassifies only with strong evidence, abstains when uncertain
+    v
+[Class-Aware LLM Extraction] --> hybrid prompt with priority schema hints + maximize coverage
+    |                              temperature=0, deterministic, retry for missing attrs
     v
 [Attribute Normalization] --> 500+ aliases -> canonical names per class, schema-ordered
     |
@@ -84,14 +88,14 @@ Input Excel
 - Tables prioritized in combined output so specs are never cut off by navigation boilerplate
 - Smart truncation with configurable limits: 3000 chars tables, 5000 chars text, 8000 chars combined
 
-#### 3. Deterministic Classification from Web Content
+#### 3. Initial Classification from Web Content
 - **Entry:** `src/class_extractor.py`
-- Pattern-based classification that requires no LLM call (95% accuracy)
-- Scans breadcrumbs, category labels, page titles, URL paths, and keyword density
+- Pattern-based classification from breadcrumbs, category labels, page titles, URL paths, keyword density
 - 90+ class aliases map abbreviations to canonical names (e.g., "shcs" -> "Socket Head Cap Screw")
 - Parent-child specificity resolution (e.g., "Washer" demoted when "Split Lock Washer" also matches)
 - Confidence threshold (score >= 4) before accepting a deterministic match
 - Falls back to LLM classification only when pattern matching is inconclusive
+- Classification validated downstream by attribute-fit scoring (see section 5a)
 
 #### 4. LLM Part Classification
 - **Entry:** `src/part_classifier.py`
@@ -108,27 +112,35 @@ Input Excel
 - Agreement tracking: compares regex vs LLM results to measure confidence
 - Pre-extracted values sent to LLM for validation, not as replacements
 
-#### 6. LLM Attribute Extraction & Validation
+#### 5a. Class-Blind Extraction + Attribute-Fit Validation
+- **Entry:** `src/class_validator.py`
+- Class-blind LLM extraction: extracts ALL specs from scraped content with no class context, eliminating confirmation bias
+- Attribute-fit scoring: compares blind-extracted attribute names against CLASS_SCHEMAS for initial class + all candidate classes
+- Universal attributes (present in >90% of classes) are dynamically computed and excluded from scoring to avoid inflating every class
+- Reclassifies only when a competitor class clearly wins; abstains when uncertain (keeps initial classification)
+- Zero hardcoded logic -- all scoring is dynamic from `schema/Classes.json` and inherited attribute sets
+
+#### 6. Class-Aware LLM Extraction & Validation
 - **Entry:** `src/attribute_extractor.py`
+- Runs after class validation with the confirmed/corrected class
 - Hybrid extraction prompt: schema attrs as priority hints + maximize coverage
 - When regex pre-extracted values exist, LLM validates and fills gaps (not full extraction)
-- Automatic unit conversion (inches <-> mm) per part's specified unit
+- Automatic unit conversion (inches <-> mm) per part's specified unit; "as-is" mode preserves original units when unit not specified
 - Validation retry: if >50% of schema attributes missing, targeted re-extraction for just the missing ones
 - Temperature=0 for deterministic, reproducible output
 
 #### 7. Canonical Attribute Normalization
 - **Entry:** `src/attr_schema.py`
-- JSON-based schema (primary): `input/Classes.json` (93 classes, hierarchical tree with Teamcenter classids) + `input/Attributes.json` (46 attributes with 5-digit numeric IDs, LOV values, ranges)
+- JSON-based schema: `schema/Classes.json` (93 classes, hierarchical tree with Teamcenter classids) + `schema/Attributes.json` (46 attributes with 5-digit numeric IDs, LOV values, ranges)
 - Attribute inheritance: child classes automatically inherit all ancestor attributes
 - LOV normalization: extracted values matched to Teamcenter LOV entries (e.g., "Stainless Steel" -> "StainlessSteel")
-- Schema load priority: JSON → aliases.json (wins on conflict) → Excel (`ClassificationSchema.xlsx`) → hardcoded defaults
-- **`input/aliases.json`** (configurable, human-editable): three sections loaded at startup:
+- Schema load priority: JSON → aliases.json (wins on conflict)
+- **`schema/aliases.json`** (configurable, human-editable): two sections loaded at startup:
   - `attribute_aliases`: canonical name → [alternate names, abbreviations] (e.g., "Inner Diameter" → ["ID", "I.D.", "Bore", "Bore Diameter"])
   - `class_aliases`: canonical class → [alternate class names]
-  - `class_attribute_overrides`: context-aware per-class mapping (e.g., "size" = "Thread Size" for Bolt, "Outer Diameter" for Washer)
 - `shortname` field from Attributes.json auto-loaded as alias (e.g., shortname "ID" → "Inner Diameter" without any manual config)
 - Token-based fuzzy matching fallback: multi-word alias subsets matched against raw LLM keys
-- TC Class ID resolved from `classificationId` field (falls back to `id`, then `classid`)
+- TC Class ID resolved from `classid` field first (falls back to `classificationId`, then `id`)
 - 500+ alias mappings including DigiKey/Mouser API parameter names
 - Default schema for classes without specific definitions
 
@@ -136,7 +148,7 @@ Input Excel
 - **Entry:** `src/excel_handler.py`
 - Groups parts by classified type
 - Writes one `.xlsx` per class with consistent column headers
-- TC Class ID column (resolved from `classificationId` in Classes.json)
+- TC Class ID column (resolved from `classid` field in Classes.json, fallback to `classificationId`)
 - **Color-coded headers:** TC-configured attributes (navy blue) appear first, followed by LLM-extracted additional attributes (gray-purple) — makes TC schema vs agent-discovered data immediately visible
 - Attribute columns ordered: TC inherited attrs first (from parent + child classes), then agent-extracted extras
 - Classes not found in TC hierarchy get `-NotInTc` filename suffix
@@ -248,10 +260,11 @@ Input Excel
 - CLI modes: `--plmxml` (mandatory), `--sml` (optional), `--output`, `--dry-run`, `--merge`, `--demo`
 - Zero external dependencies (stdlib only)
 
-#### 22. LLM Alias Generator
-- **Entry:** `generate_aliases.py`
-- Reads `input/Classes.json` + `input/Attributes.json`, uses the configured LLM (same `.env` as `main.py`) to auto-generate `input/aliases.json`
-- Three batched LLM passes (12 items/call): attribute aliases, class aliases, class attribute overrides
+#### 22. Schema Generator
+- **Entry:** `generate_schema.py`
+- Reads `schema/Classes.json` + `schema/Attributes.json`, uses the configured LLM (same `.env` as `main.py`) to auto-generate `schema/aliases.json` + `schema/classification_hints.json`
+- Generates attribute aliases and class aliases via batched LLM passes
+- Generates `classification_hints.json`: part-name keyword to class mappings for classification assistance
 - `--merge` flag: fills only empty entries, preserving manual edits
 - `--dry-run`: preview without writing
 - Retry logic (3 attempts, 3s backoff) for rate-limited providers
@@ -300,7 +313,8 @@ Input Excel
 | v1.6 | Excel-based schema (81 classes), TC Class ID, hybrid prompts, 8th provider | Done |
 | v1.7 | JSON schema (93 classes), PLMXML converter, attribute inheritance, LOV normalization, adaptive search, fuzzy column matching | Done |
 | v1.8 | Azure AI Foundry provider, DictionaryAttribute + KeyLOV PLMXML parsing, aliases.json configurable system, generate_aliases.py LLM generator, color-coded Excel output, classificationId TC Class ID, shortname auto-alias, fuzzy attr matching, class-aware attribute overrides | Done |
-| v2.0 | Teamcenter direct import, additional part classes | Planned |
+| v2.0 | Classification rearchitecture: class-blind extraction + attribute-fit validation, schema/ directory, generate_schema.py (replaces generate_aliases.py), classification_hints.json, classid priority, as-is unit mode, removed Excel fallback + hardcoded defaults | Done |
+| v2.1 | Teamcenter direct import, additional part classes | Planned |
 
 ## File Structure
 
@@ -310,7 +324,7 @@ PartClassifier/
 ├── main_cc.py                 # Claude Code CLI mode entry point (zero-key)
 ├── app.py                     # Streamlit web UI
 ├── plmxml_to_json.py          # PLMXML → JSON converter (AdminClass + DictionaryAttribute + KeyLOV)
-├── generate_aliases.py        # LLM alias generator → input/aliases.json (Step 1 of setup)
+├── generate_schema.py         # Schema generator → schema/aliases.json + schema/classification_hints.json
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template
 ├── .env                       # Runtime config (git-ignored)
@@ -321,12 +335,13 @@ PartClassifier/
 ├── url_cache.json             # URL cache (shared across modes, 30-day TTL)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
-├── input/
+├── schema/
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree, Teamcenter classids
 │   ├── Attributes.json                # JSON schema: 46 attributes, numeric IDs, LOV values, ranges
-│   ├── aliases.json                   # Configurable aliases: attr_aliases, class_aliases, class_attr_overrides
-│   ├── PartClassifierInput.xlsx       # Sample input (4 parts)
-│   └── ClassificationSchema.xlsx      # Excel-based schema fallback (81 classes, 46 attrs, 169 aliases)
+│   ├── aliases.json                   # Configurable aliases: attr_aliases, class_aliases
+│   └── classification_hints.json      # Part-name keyword → class mappings for classification
+├── input/
+│   └── PartClassifierInput.xlsx       # Sample input (4 parts)
 ├── output/                    # Generated Excel files (git-ignored)
 ├── docs/                      # HTML documentation pages
 │   ├── index.html             # Documentation hub
@@ -342,11 +357,12 @@ PartClassifier/
     ├── web_scraper.py         # 7-tier content lookup with URL caching
     ├── stealth_scraper.py     # CloakBrowser integration
     ├── api_sources.py         # DigiKey/Mouser/McMaster APIs
-    ├── attribute_extractor.py # Hybrid extraction + unit conversion + retry
-    ├── class_extractor.py     # Deterministic class from web content (95% accuracy)
+    ├── attribute_extractor.py # Class-aware extraction + unit conversion + retry
+    ├── class_validator.py     # Class-blind extraction + attribute-fit scoring
+    ├── class_extractor.py     # Initial class from web content patterns
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # Schema loader + aliases.json + fuzzy matching + class-aware overrides
+    ├── attr_schema.py         # Schema loader + aliases.json + fuzzy matching
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes

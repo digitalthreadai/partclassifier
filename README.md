@@ -1,8 +1,8 @@
 # Part Classification Agent
 
-A production-grade AI agent that reads mechanical parts from Excel, searches distributor APIs and the web for specifications, classifies each part into 93 categories, extracts structured attributes via regex pre-extraction + LLM validation, and writes per-class Excel output files with TC Class ID -- ready for Teamcenter PLM import. Includes a PLMXML-to-JSON converter for importing Teamcenter classification hierarchies.
+A production-grade AI agent that reads mechanical parts from Excel, searches distributor APIs and the web for specifications, classifies each part into 93 categories using a classify-then-blind-extract-then-validate-then-extract architecture, and writes per-class Excel output files with TC Class ID -- ready for Teamcenter PLM import. Includes a PLMXML-to-JSON converter for importing Teamcenter classification hierarchies.
 
-**7,031 LOC | 18 modules | 9 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases | configurable aliases.json**
+**7,031 LOC | 18 modules | 9 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases | class_validator.py | classification_hints.json | configurable aliases.json**
 
 **Three execution modes:**
 
@@ -47,34 +47,38 @@ Open http://localhost:8501, configure your LLM provider in the sidebar, and clic
 python main.py
 python main.py --no-cache          # bypass LLM cache
 python main.py --clear-cache       # delete cache before run
+python main.py --fresh             # clear cache + progress, start fresh
 ```
 
 ---
 
-## Pipeline (6 Steps)
+## Pipeline (7 Steps)
 
 ```
-1. Read Excel input (Part Number, Mfg Part Number, Mfg Name, Unit)
+1. Read Excel input
        |
-2. Multi-tier search: APIs -> Stealth Browser -> URL Cache -> DuckDuckGo -> Fallback
+2. Multi-tier search (APIs -> Stealth -> Cache -> DuckDuckGo)
        |
-3. Classify: Deterministic from web content (95% accuracy) -> LLM cache -> LLM
+3. Initial classify (web content patterns -> LLM fallback)
        |
-4. Pre-extract: Regex patterns from tables, key-value pairs, standards, materials
+4. Class-blind LLM extraction (no class bias -- extracts ALL specs)
        |
-5. LLM validates pre-extracted values + fills gaps (hybrid prompt, temperature=0)
+5. Validate classification (attribute-fit scoring against CLASS_SCHEMAS)
        |
-6. Write per-class Excel output with TC Class ID and canonical column names
+6. Class-aware LLM extraction (with validated class + regex pre-extraction)
+       |
+7. Write per-class Excel output with TC Class ID
 ```
 
 For each part in the input Excel:
 
 1. **Searches** for specs via distributor APIs first (DigiKey OAuth2, Mouser API key, McMaster-Carr mTLS), falling back to CloakBrowser stealth scraping, then DuckDuckGo web search with curl_cffi (Chrome 124 TLS fingerprint).
 2. **Cleans** content via HTML table extraction and smart truncation (3K/5K/8K char limits) to prioritize specs over navigation boilerplate.
-3. **Classifies** the part deterministically from web content (breadcrumbs, category labels, URL paths) with 95% accuracy. Falls back to LLM classification only when inconclusive. 93 part classes supported (via JSON schema with Teamcenter-compatible hierarchical class tree).
-4. **Pre-extracts** attributes via regex patterns from HTML tables, key-value patterns, standards (DIN/ASME/ISO), and materials.
-5. **Validates** pre-extracted values with LLM using hybrid prompts (priority schema hints + maximize coverage) and fills any gaps. Converts all dimensional values to the target unit (inches or mm).
-6. **Normalizes** attributes via 500+ alias mappings to canonical names and **writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns.
+3. **Classifies** the part deterministically from web content (breadcrumbs, category labels, URL paths). Falls back to LLM classification only when inconclusive. 93 part classes supported (via JSON schema with Teamcenter-compatible hierarchical class tree).
+4. **Class-blind LLM extraction** extracts ALL specs without class bias, breaking the circular dependency between classification and extraction.
+5. **Validates** classification via attribute-fit scoring against CLASS_SCHEMAS. Dynamically computes universal attrs (>90% of classes). Reclassifies only with strong evidence (MIN_ADVANTAGE=2). Abstains when uncertain.
+6. **Class-aware extraction** with validated class + regex pre-extraction + unit handling. Supports inches, mm, or as-is mode (preserves original units when not specified).
+7. **Normalizes** attributes via 500+ alias mappings to canonical names and **writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns.
 
 ---
 
@@ -83,7 +87,7 @@ For each part in the input Excel:
 ### 1. Prerequisites
 
 - **Python 3.11+** ([python.org](https://www.python.org/downloads/))
-- **For API Key mode:** An API key from one of the 8 supported LLM providers
+- **For API Key mode:** An API key from one of the 9 supported LLM providers
 - **For Claude Code CLI mode:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and configured
 
 ### 2. Install
@@ -109,7 +113,7 @@ LLM_PROVIDER=groq
 LLM_API_KEY=gsk_your_groq_key_here
 ```
 
-See [SITECONFIGURATIONS.md](SITECONFIGURATIONS.md) for all 8 provider configurations.
+See [SITECONFIGURATIONS.md](SITECONFIGURATIONS.md) for all 9 provider configurations.
 
 ### 4. Prepare input Excel
 
@@ -119,29 +123,30 @@ Place your file at `input/PartClassifierInput.xlsx` with columns: Part Number, P
 
 The JSON-based schema is the primary schema source:
 
-- **`input/Classes.json`** -- Teamcenter-compatible hierarchical class tree with 93 classes. Each class has ICM-format IDs matching Teamcenter classid, parent-child relationships with attribute inheritance, and class aliases for web content classification.
-- **`input/Attributes.json`** -- Attribute dictionary with 46 attributes using 5-digit numeric IDs matching Teamcenter attribute IDs. Includes name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, and keyLOVID.
+- **`schema/Classes.json`** -- Teamcenter-compatible hierarchical class tree with 93 classes. Each class has ICM-format IDs matching Teamcenter classid, parent-child relationships with attribute inheritance, and class aliases for web content classification.
+- **`schema/Attributes.json`** -- Attribute dictionary with 46 attributes using 5-digit numeric IDs matching Teamcenter attribute IDs. Includes name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, and keyLOVID.
 
 Attribute inheritance: child classes automatically inherit all ancestor attributes. LOV normalization: extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" maps to "StainlessSteel").
-
-**Fallback chain:** JSON schema -> Excel schema (`ClassificationSchema.xlsx`) -> hardcoded defaults in `src/attr_schema.py`.
 
 To generate JSON schema files from Teamcenter PLMXML exports, use the included converter:
 
 ```bash
-python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output schema/
 ```
 
-- **`input/aliases.json`** (auto-generated, human-editable) -- configurable alias mappings that override all other sources:
+- **`schema/aliases.json`** (auto-generated, human-editable) -- configurable alias mappings that override all other sources:
   - `attribute_aliases`: alternate names/abbreviations per attribute (e.g., "ID", "Bore" → "Inner Diameter")
   - `class_aliases`: alternate class names
-  - `class_attribute_overrides`: context-aware mapping (e.g., "size" = "Thread Size" for Bolt, "Outer Diameter" for Washer)
 
-Generate `aliases.json` using the LLM alias generator (same `.env` config as `main.py`):
+- **`schema/classification_hints.json`** -- Part-name keyword to class mappings for candidate generation during validation
+
+Generate `aliases.json` and `classification_hints.json` using the LLM schema generator (same `.env` config as `main.py`):
 
 ```bash
-python generate_aliases.py          # generate fresh aliases.json
-python generate_aliases.py --merge  # fill gaps, keep manual edits
+python generate_schema.py              # generate both aliases.json + classification_hints.json
+python generate_schema.py --aliases    # generate aliases.json only
+python generate_schema.py --hints      # generate classification_hints.json only
+python generate_schema.py --merge      # fill gaps, keep manual edits
 ```
 
 ### 6. Run
@@ -292,8 +297,9 @@ output/
 - **Regex + LLM agreement tracking:** measures extraction confidence
 - **Hybrid extraction prompt:** priority schema hints + maximize coverage
 - **Canonical normalization:** 500+ alias mappings ensure consistent columns
-- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization (fallback: Excel -> hardcoded)
-- **Unit conversion:** inches <-> mm per part's specified unit
+- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization
+- **Unit handling:** inches, mm, or as-is (preserves original units)
+- **Class-blind validation:** attribute-fit scoring against CLASS_SCHEMAS, dynamically computed universal attrs, abstain mechanism
 - **Retry logic:** exponential backoff for timeouts, rate limits (429, 503)
 - **Validation retry:** re-extraction for missing attrs when >50% schema attrs unfilled
 - **Fallback to part name:** mines dimensions from part name when no web content found
@@ -301,7 +307,6 @@ output/
 - **Metrics tracking:** quality, cache effectiveness, regex/LLM agreement per run
 - **Resume capability:** checkpoint after each part via progress.json
 - **Windows UTF-8 encoding fix:** prevents encoding errors in output
-- **21 production-ready bug fixes:** comprehensive edge case handling
 
 ---
 
@@ -319,7 +324,7 @@ output/
 
 **Vacuum & Semiconductor:** Vacuum Valve, Gate Valve, Mass Flow Controller, Wafer Shipper, Wafer Carrier, Gas Filter, Liquid Filter, Pressure Gauge, Vacuum Gauge
 
-Other part types are handled with a default attribute schema. To add a new class, add it to `input/Classes.json` (preferred), `input/ClassificationSchema.xlsx` (fallback), or `CLASS_SCHEMAS` in `src/attr_schema.py` (hardcoded fallback).
+Other part types are handled with a default attribute schema. To add a new class, add it to `schema/Classes.json` and regenerate with `python generate_schema.py`.
 
 ---
 
@@ -331,22 +336,26 @@ PartClassifier/
 ├── main_cc.py                 # Claude Code CLI entry point (zero API keys)
 ├── app.py                     # Streamlit web UI
 ├── plmxml_to_json.py          # PLMXML → JSON converter (Teamcenter export → Classes/Attributes JSON)
+├── generate_schema.py         # Auto-generate aliases.json + classification_hints.json
 ├── requirements.txt           # Python dependencies
-├── .env.example               # Configuration template (8 providers)
+├── .env.example               # Configuration template (9 providers)
 ├── url_cache.json             # URL cache (30-day TTL, shared)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
 ├── input/
+│   └── PartClassifierInput.xlsx       # Sample input
+├── schema/
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree, Teamcenter classids
 │   ├── Attributes.json                # JSON schema: 46 attributes, numeric IDs, LOV values, ranges
-│   ├── PartClassifierInput.xlsx       # Sample input
-│   └── ClassificationSchema.xlsx      # Excel-based schema fallback (81 classes, 46 attrs, 169 aliases)
+│   ├── aliases.json                   # Auto-generated alias mappings (attribute + class aliases)
+│   └── classification_hints.json      # Part-name keyword → class mappings for validation
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
-    ├── llm_client.py          # Unified async LLM client (8 providers)
+    ├── llm_client.py          # Unified async LLM client (9 providers)
     ├── claude_code_client.py  # Claude CLI wrapper (batch + parallel)
     ├── part_classifier.py     # LLM classification + batch (100/call)
+    ├── class_validator.py     # Class-blind extraction + attribute-fit validation
     ├── web_scraper.py         # 7-tier content lookup with URL caching
     ├── stealth_scraper.py     # CloakBrowser integration
     ├── api_sources.py         # DigiKey (OAuth2) / Mouser (API) / McMaster (mTLS)
@@ -354,7 +363,7 @@ PartClassifier/
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # JSON/Excel schema loader (93 classes, 500+ aliases, LOV normalization)
+    ├── attr_schema.py         # JSON schema loader (93 classes, aliases, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes

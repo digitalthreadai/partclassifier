@@ -119,11 +119,11 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 
 <main class="content" id="top">
   <h1>Strategy &amp; Features</h1>
-  <p class="subtitle">Architecture, feature map, tech stack, and development roadmap. 7,031 LOC across 17 modules.</p>
+  <p class="subtitle">v2.0 -- Architecture, feature map, tech stack, and development roadmap.</p>
 
   <p>PartClassifier is a production-grade AI agent for mechanical part classification and attribute extraction, built for industrial engineering teams managing large inventories of fasteners, bearings, fittings, sensors, and other mechanical components. It automates the process of looking up part specifications from distributor websites, extracting structured attributes, and preparing classification-ready Excel outputs for Teamcenter PLM import.</p>
 
-  <p>The agent combines deterministic pattern matching (95% accuracy), regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs (DigiKey OAuth2, Mouser API, McMaster mTLS), stealth web scraping (CloakBrowser with 33 C++ patches), and intelligent caching -- to process thousands of parts with minimal human intervention. A JSON-based schema (<code>Classes.json</code> + <code>Attributes.json</code>) with 93 classes, 46 attributes, Teamcenter-compatible IDs, attribute inheritance, and LOV normalization drives the entire pipeline. A PLMXML converter (<code>plmxml_to_json.py</code>) imports classification hierarchies directly from Teamcenter exports.</p>
+  <p>The agent combines deterministic pattern matching (95% accuracy), regex pre-extraction, and LLM intelligence with multi-source data retrieval -- distributor APIs (DigiKey OAuth2, Mouser API, McMaster mTLS), stealth web scraping (CloakBrowser with 33 C++ patches), and intelligent caching -- to process thousands of parts with minimal human intervention. A JSON-based schema (<code>Classes.json</code> + <code>Attributes.json</code> + <code>classification_hints.json</code>) in the <code>schema/</code> directory with 93 classes, 46 attributes, Teamcenter-compatible IDs, attribute inheritance, and LOV normalization drives the entire pipeline. v2.0 introduces a classify-then-validate architecture: class-blind extraction followed by attribute-fit scoring to catch misclassifications before the final class-aware extraction. A PLMXML converter (<code>plmxml_to_json.py</code>) imports classification hierarchies directly from Teamcenter exports.</p>
 
   <h2 id="landscape">Competitive Landscape</h2>
 
@@ -132,7 +132,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <tr><td>Manual lookup</td><td>Accurate, human-verified</td><td>Extremely slow (2-5 min/part)</td></tr>
     <tr><td>Generic web scrapers</td><td>Fast, programmable</td><td>Blocked by bot detection</td></tr>
     <tr><td>PLM vendor tools</td><td>Integrated with Teamcenter</td><td>Expensive licensing</td></tr>
-    <tr><td><strong>PartClassifier</strong></td><td>AI-driven, multi-source, 93 classes, 9 LLM providers, aliases.json, color-coded Excel, PLMXML+DictionaryAttribute import</td><td>Requires setup, LLM costs for large batches</td></tr>
+    <tr><td><strong>PartClassifier</strong></td><td>AI-driven, multi-source, 93 classes, 9 LLM providers, classify&rarr;validate architecture, classification_hints.json, color-coded Excel, PLMXML+DictionaryAttribute import</td><td>Requires setup, LLM costs for large batches</td></tr>
   </table>
 
   <h2 id="benchmarks">Benchmark Results (44 parts)</h2>
@@ -163,12 +163,16 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     |
 [Content Cleaner] -- HTML table extraction + smart truncation (3K/5K/8K limits)
     |
-[Deterministic Classification] -- breadcrumbs, labels, URLs, aliases (95% accuracy)
+[Deterministic Classification] -- breadcrumbs, labels, URLs, classification_hints.json (95% accuracy)
     |  (fallback: LLM cache -> batch LLM classify 100/call)
+[Class-Blind Extraction] -- LLM extracts all attributes with NO class context (unbiased)
+    |
+[Attribute-Fit Validation] -- score overlap against schema for initial class + candidates
+    |                          reclassify if competitor wins; abstain if uncertain
 [Regex Pre-Extraction] -- tables, key-value patterns, standards (DIN/ASME/ISO), materials
     |
-[LLM Validation + Gap Fill] -- hybrid prompt: priority schema hints + maximize coverage
-    |                            temperature=0, deterministic, retry for missing attrs
+[Class-Aware LLM Extraction] -- schema attrs as priority hints + maximize coverage
+    |                             temperature=0, as-is units (no conversion), retry for gaps
 [Attribute Normalization] -- 500+ aliases -> canonical names, schema-ordered
     |
 [Per-Class Excel Output] -- styled headers, auto-sized columns, TC Class ID</pre>
@@ -189,7 +193,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <div class="feat">
       <h4>Deterministic Classification</h4>
       <div class="module">class_extractor.py</div>
-      <p>Pattern-based classification from web content with 95% accuracy. Scans breadcrumbs, category labels, titles, URL paths. 90+ class aliases. Parent-child specificity resolution. No LLM needed when confident (score &ge; 4).</p>
+      <p>Pattern-based classification from web content with 95% accuracy. Scans breadcrumbs, category labels, titles, URL paths. classification_hints.json for class-specific keywords. 90+ class aliases. Parent-child specificity resolution. No LLM needed when confident (score &ge; 4).</p>
     </div>
     <div class="feat">
       <h4>LLM Part Classification</h4>
@@ -197,19 +201,24 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <p>81 categories. Batch classification: 100 parts per CLI call (75x faster), 50 per API call. LLM cache with 90-day TTL. Individual fallback for batch parse failures.</p>
     </div>
     <div class="feat">
+      <h4>Class-Blind Extraction + Validation</h4>
+      <div class="module">class_validator.py</div>
+      <p>v2.0 classify&rarr;validate architecture. Class-blind LLM extraction (no class context) produces unbiased attribute names. Attribute-fit scoring compares overlap against schema for initial class + candidates. Dynamic universal-attribute detection (auto-excludes attrs in &gt;90% of classes). Reclassifies if a competitor clearly wins; abstains if uncertain.</p>
+    </div>
+    <div class="feat">
       <h4>Regex Pre-Extraction</h4>
       <div class="module">regex_extractor.py</div>
       <p>Pattern-based extraction from tables, key-value pairs, standards (DIN/ASME/ISO), materials (18-8 SS, 304L, Viton). Builds label patterns from ALIASES dictionary. Agreement tracking vs LLM results.</p>
     </div>
     <div class="feat">
-      <h4>LLM Hybrid Extraction</h4>
+      <h4>Class-Aware LLM Extraction</h4>
       <div class="module">attribute_extractor.py</div>
-      <p>Hybrid prompt: schema attrs as priority hints + maximize coverage. LLM validates regex pre-extracted values, fills gaps. Unit conversion (inches/mm). Validation retry for &gt;50% missing attrs. Temperature=0.</p>
+      <p>Runs after validation with the confirmed class. Schema attrs as priority hints + maximize coverage. LLM validates regex pre-extracted values, fills gaps. As-is unit mode (preserves original units without conversion). Validation retry for &gt;50% missing attrs. Temperature=0.</p>
     </div>
     <div class="feat">
       <h4>JSON-Based Schema</h4>
       <div class="module">attr_schema.py</div>
-      <p>Classes.json (93 classes, hierarchical tree, Teamcenter classids) + Attributes.json (46 attrs, 5-digit IDs, LOV values, ranges). Attribute inheritance: children inherit ancestor attrs. LOV normalization. Fallback: JSON &rarr; Excel &rarr; hardcoded. 500+ aliases. Fuzzy matching.</p>
+      <p>schema/Classes.json (93 classes, hierarchical tree, Teamcenter classids) + schema/Attributes.json (46 attrs, 5-digit IDs, LOV values, ranges) + schema/aliases.json + schema/classification_hints.json. Attribute inheritance: children inherit ancestor attrs. LOV normalization. 500+ aliases. Fuzzy matching. generate_schema.py regenerates aliases and hints via LLM.</p>
     </div>
     <div class="feat">
       <h4>PLMXML Converter</h4>
@@ -386,10 +395,14 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     </div>
     <div class="roadmap-item done">
       <div class="version">v1.8 <span class="tag done">Done</span></div>
-      <div class="desc">Azure AI Foundry provider, DictionaryAttribute + KeyLOV PLMXML parsing, aliases.json configurable system, generate_aliases.py LLM generator, color-coded Excel output (TC navy / agent gray), classificationId TC Class ID, shortname auto-alias, fuzzy attr matching, class-aware attribute overrides</div>
+      <div class="desc">Azure AI Foundry provider, DictionaryAttribute + KeyLOV PLMXML parsing, aliases.json configurable system, generate_schema.py LLM generator, color-coded Excel output (TC navy / agent gray), classificationId TC Class ID, shortname auto-alias, fuzzy attr matching, class-aware attribute overrides</div>
+    </div>
+    <div class="roadmap-item done">
+      <div class="version">v2.0 <span class="tag done">Done</span></div>
+      <div class="desc">Classification rearchitecture: classify&rarr;blind-extract&rarr;validate&rarr;extract pipeline, class_validator.py (attribute-fit scoring), classification_hints.json, schema files moved to schema/ directory, generate_schema.py replaces generate_aliases.py, as-is unit mode, removed Excel fallback and hardcoded defaults</div>
     </div>
     <div class="roadmap-item">
-      <div class="version">v2.0 <span class="tag planned">Planned</span></div>
+      <div class="version">v2.1 <span class="tag planned">Planned</span></div>
       <div class="desc">Teamcenter direct import, additional part classes</div>
     </div>
   </div>
@@ -401,30 +414,34 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 ├── main_cc.py                 # Claude Code CLI (zero API keys)
 ├── app.py                     # Streamlit web UI
 ├── plmxml_to_json.py          # PLMXML → JSON converter
+├── generate_schema.py         # LLM-powered schema generator (aliases + hints)
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template (9 providers)
 ├── url_cache.json             # URL cache (30-day TTL + bad-entry eviction)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
-├── input/
+├── schema/
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree
 │   ├── Attributes.json                # JSON schema: 46 attrs, LOV values, ranges
-│   ├── PartClassifierInput.xlsx       # Sample input
-│   └── ClassificationSchema.xlsx      # Excel schema fallback (81 classes)
+│   ├── aliases.json                   # 500+ attribute aliases → canonical names
+│   └── classification_hints.json      # Class-specific keywords for deterministic matching
+├── input/
+│   └── PartClassifierInput.xlsx       # Sample input
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
     ├── llm_client.py          # Unified async LLM client (9 providers)
     ├── claude_code_client.py  # Claude CLI wrapper (batch + parallel)
     ├── part_classifier.py     # LLM classification + batch (100/call)
+    ├── class_validator.py     # Class-blind extraction + attribute-fit validation
     ├── web_scraper.py         # 7-tier content lookup with URL caching
     ├── stealth_scraper.py     # CloakBrowser integration (33 C++ patches)
     ├── api_sources.py         # DigiKey (OAuth2) / Mouser (API) / McMaster (mTLS)
-    ├── attribute_extractor.py # Hybrid extraction + unit conversion + retry
+    ├── attribute_extractor.py # Class-aware extraction + as-is units + retry
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # JSON/Excel schema (93 classes, LOV normalization)
+    ├── attr_schema.py         # JSON schema (93 classes, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes

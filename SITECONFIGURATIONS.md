@@ -219,16 +219,9 @@ Required columns (exact names):
 
 A sample file with 4 parts is included in the repo.
 
-### Classification Schema (Excel-based)
+### Classification Schema
 
-The file `input/ClassificationSchema.xlsx` defines 81 part classes, 46 canonical attributes, and 169 alias mappings. This schema drives:
-
-- Which attributes are extracted per class
-- Column ordering in output Excel files
-- Alias normalization (e.g., "Thread Pitch" -> "Pitch")
-- TC Class ID mapping for Teamcenter integration
-
-If `ClassificationSchema.xlsx` is missing, the system falls back to hardcoded schemas in `src/attr_schema.py`.
+The JSON schema files in `schema/` define all part classes, canonical attributes, and alias mappings. See Section 10 for details.
 
 ---
 
@@ -275,6 +268,7 @@ python main.py
 python main.py --input path/to/input.xlsx --output path/to/output/
 python main.py --no-cache        # bypass LLM cache
 python main.py --clear-cache     # delete cache before run
+python main.py --fresh           # ignore previous progress, start from scratch
 ```
 
 Requires `.env` configured. Processes all parts sequentially with resume capability.
@@ -305,7 +299,7 @@ output/
   Tube Fitting.xlsx
 ```
 
-Each file contains: original input columns + Part Class + TC Class ID + Source URL + extracted attributes with canonical column names (schema-ordered).
+Each file contains: original input columns + Part Class + TC Class ID (looked up from classid in `schema/Classes.json`, checked first before any other source) + Source URL + extracted attributes with canonical column names (schema-ordered). Unit of Measure conversion respects an as-is mode: if the input UoM matches the source data, values are kept as-is without conversion.
 
 ---
 
@@ -334,34 +328,32 @@ Each file contains: original input columns + Part Class + TC Class ID + Source U
 
 ## 10. Classification Schema
 
-### JSON Schema (Primary -- `input/Classes.json` + `input/Attributes.json`)
+### JSON Schema (Required -- `schema/Classes.json` + `schema/Attributes.json`)
 
-The primary schema source with Teamcenter-compatible hierarchical class trees:
+The schema source with Teamcenter-compatible hierarchical class trees. Both files are required -- there is no Excel or hardcoded fallback.
 
-- **`input/Classes.json`** -- 93 classes with ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Each class has: id, classid, name, aliases, attributeslist (numeric attribute IDs), children.
-- **`input/Attributes.json`** -- 46 attributes with 5-digit numeric IDs matching Teamcenter attribute IDs. Each attribute has: name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, keyLOVID.
+- **`schema/Classes.json`** -- 93 classes with ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Each class has: id, classid, name, aliases, attributeslist (numeric attribute IDs), children.
+- **`schema/Attributes.json`** -- 46 attributes with 5-digit numeric IDs matching Teamcenter attribute IDs. Each attribute has: name, shortname, aliases, unitOfMeasure (multi-value array), range, LOV values, keyLOVID.
 
 **Attribute inheritance:** Child classes automatically inherit all ancestor attributes.
 
 **LOV normalization:** Extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" maps to "StainlessSteel").
-
-**Fallback chain:** JSON -> Excel -> hardcoded defaults.
 
 ### PLMXML to JSON Converter
 
 To generate JSON schema files from Teamcenter PLMXML exports:
 
 ```bash
-python plmxml_to_json.py --plmxml export.xml --output input/
+python plmxml_to_json.py --plmxml export.xml --output schema/
 
 # With SML attribute definitions:
-python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output schema/
 
 # Dry run (preview without writing):
 python plmxml_to_json.py --plmxml export.xml --dry-run
 
 # Merge with existing JSON files:
-python plmxml_to_json.py --plmxml export.xml --output input/ --merge
+python plmxml_to_json.py --plmxml export.xml --output schema/ --merge
 
 # Demo mode (generate sample output):
 python plmxml_to_json.py --demo
@@ -369,20 +361,20 @@ python plmxml_to_json.py --demo
 
 The converter parses `<AdminClass>` and `<DictionaryAttribute>` tags (namespace-agnostic), reconstructs the hierarchical tree, and resolves attribute→format→KeyLOV chains including inline `<KeyLOV>` sections with `<Key>`/`<Value>` sibling pairs. Zero external dependencies (stdlib only).
 
-### Alias Configuration (`input/aliases.json`)
+### Schema Generation (`generate_schema.py`)
 
-The alias system maps LLM-extracted attribute names to TC canonical names. `aliases.json` wins over all other alias sources (JSON schema, Excel, hardcoded). Generate it using the LLM alias generator:
+A unified tool that generates both alias and classification hint files from the JSON schema using LLM inference. Uses the same `.env` as `main.py`.
 
 ```bash
-# Step 1: Generate aliases.json (uses same .env as main.py)
-python generate_aliases.py
-
-# Fill gaps only, keep manual edits:
-python generate_aliases.py --merge
-
-# Preview without writing:
-python generate_aliases.py --dry-run
+python generate_schema.py              # generate both
+python generate_schema.py --aliases    # aliases.json only
+python generate_schema.py --hints      # classification_hints.json only
+python generate_schema.py --merge      # fill gaps, keep manual edits
 ```
+
+### Alias Configuration (`schema/aliases.json`)
+
+The alias system maps LLM-extracted attribute names to TC canonical names. `aliases.json` wins over all other alias sources in the JSON schema.
 
 The file has three sections you can edit manually at any time:
 
@@ -402,9 +394,25 @@ The file has three sections you can edit manually at any time:
 }
 ```
 
-The `shortname` field from `Attributes.json` is automatically loaded as an alias (e.g., shortname `"ID"` → `"Inner Diameter"`) without any manual config.
+The `shortname` field from `Attributes.json` is automatically loaded as an alias (e.g., shortname `"ID"` -> `"Inner Diameter"`) without any manual config.
 
-**Step 2:** Run the classifier normally — `aliases.json` is loaded automatically at startup.
+### Classification Hints (`schema/classification_hints.json`)
+
+LLM-generated hints that help the classifier distinguish between similar part classes. Each entry maps a class name to a set of distinguishing keywords, typical attributes, and disambiguation notes. Generated by `generate_schema.py --hints` and loaded automatically at classification time.
+
+### Attribute-Fit Validation (`src/class_validator.py`)
+
+The classification pipeline uses attribute-fit scoring to validate and potentially reclassify parts:
+
+1. **Class-blind LLM extraction** -- The LLM extracts all attributes it can find from the scraped content, without being told which class the part belongs to. This avoids confirmation bias.
+
+2. **Attribute-fit scoring** -- Each candidate class is scored by how many of the extracted attributes match its schema. A dynamic set of "universal" attributes (common across many classes) is computed and excluded from scoring to prevent them from inflating every class equally.
+
+3. **Reclassification** -- If a different class scores higher than the original classification by at least `MIN_ADVANTAGE=2` attribute points, the part is reclassified to the better-fitting class.
+
+4. **Abstain mechanism** -- If no class achieves a meaningful fit score, the system can abstain from classification rather than forcing a poor match.
+
+After validation, run the classifier normally -- `aliases.json` and `classification_hints.json` are loaded automatically at startup.
 
 ```bash
 python main.py
@@ -412,29 +420,18 @@ python main.py
 python main_cc.py
 ```
 
-### Excel-Based Schema (Fallback -- `input/ClassificationSchema.xlsx`)
-
-Used when JSON schema files are not found. Defines 81 part classes, 46 canonical attributes, and 169 aliases. Columns:
-
-- **Class Name**: Canonical part class name
-- **TC Class ID**: Teamcenter classification ID
-- **Attributes**: Ordered list of canonical attribute names per class
-- **Aliases**: Mapping from alternative names to canonical names
-
 ### Adding a New Part Class
 
-1. Add to `input/Classes.json` (preferred):
+1. Add to `schema/Classes.json`:
    - Add a new entry with classid, name, aliases, and attributeslist (numeric attribute IDs)
    - Child classes inherit parent attributes automatically
 
-2. Or add to `input/ClassificationSchema.xlsx` (fallback):
-   - Add a new row with class name, TC Class ID, and attributes
-   - Add alias mappings as needed
+2. Add any new attributes to `schema/Attributes.json` if they do not already exist.
 
-3. Or edit `src/attr_schema.py` (hardcoded fallback):
-   - Add class name to `KNOWN_CLASSES`
-   - Add canonical attribute list to `CLASS_SCHEMAS`
-   - Add alias variants to `ALIASES`
+3. Regenerate aliases and hints:
+   ```bash
+   python generate_schema.py --merge
+   ```
 
 4. Optionally add abbreviation aliases to `CLASS_ALIASES` in `src/class_extractor.py` for deterministic classification:
 ```python
@@ -499,8 +496,8 @@ No Dockerfile is included yet. For containerization:
 - [ ] CloakBrowser installed (`pip install cloakbrowser`)
 - [ ] Azure OpenAI configured (enterprise)
 - [ ] AWS Bedrock configured (enterprise)
-- [ ] Classification schema Excel customized
-- [ ] JSON schema files generated from PLMXML (if using Teamcenter)
+- [ ] JSON schema files in `schema/` reviewed or generated from PLMXML (if using Teamcenter)
+- [ ] Aliases and hints generated (`python generate_schema.py`)
 
 ### First Run
 - [ ] Input Excel placed in `input/` folder

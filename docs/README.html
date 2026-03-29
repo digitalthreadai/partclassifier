@@ -107,15 +107,15 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 </aside>
 
 <main class="content" id="top">
-  <h1>Part Classification Agent</h1>
-  <p class="subtitle">Production-grade AI agent for mechanical part classification and attribute extraction. 7,031 LOC across 17 modules.</p>
+  <h1>Part Classification Agent v2.0</h1>
+  <p class="subtitle">Production-grade AI agent for mechanical part classification and attribute extraction. v2.0 -- rearchitected pipeline with attribute-fit validation. 7,031 LOC across 18 modules.</p>
 
   <p>PartClassifier reads mechanical parts from an Excel file, searches distributor APIs and the web for specifications, classifies each part into 93 categories with 95% accuracy, extracts structured attributes via regex pre-extraction + LLM validation using hybrid prompts, and writes one Excel output file per part class with TC Class ID -- ready for Teamcenter PLM import.</p>
 
   <div class="mode-cards">
     <div class="mode-card">
       <h4>API Key CLI</h4>
-      <p><code>python main.py</code><br>9 LLM providers via .env configuration</p>
+      <p><code>python main.py</code><br>9 LLM providers via .env configuration. <code>--fresh</code> flag for clean runs</p>
     </div>
     <div class="mode-card">
       <h4>Claude Code CLI</h4>
@@ -144,19 +144,21 @@ streamlit run app.py</pre>
 
   <h3>Option C: Command Line (API key)</h3>
   <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python main.py
+python main.py --fresh             # delete cache + progress, start fresh
 python main.py --no-cache          # bypass LLM cache
-python main.py --clear-cache       # delete cache before run</pre>
+python main.py --clear-cache       # delete cache before run
 
-  <h2 id="pipeline">Pipeline (6 Steps)</h2>
+  <h2 id="pipeline">Pipeline (7 Steps): Read &rarr; Search &rarr; Classify &rarr; Blind Extract &rarr; Validate &rarr; Extract &rarr; Write</h2>
 
   <table>
     <tr><th>Step</th><th>Action</th><th>Module(s)</th></tr>
-    <tr><td>1</td><td>Multi-tier search: 7 tiers from APIs to fallback. DigiKey (OAuth2), Mouser (API key), McMaster (mTLS), CloakBrowser, URL cache, DuckDuckGo + curl_cffi, stealth fallback</td><td><code>web_scraper.py</code>, <code>api_sources.py</code>, <code>stealth_scraper.py</code></td></tr>
-    <tr><td>2</td><td>Classify: deterministic from web content (95% accuracy) &rarr; LLM cache &rarr; batch LLM (100/call)</td><td><code>class_extractor.py</code>, <code>part_classifier.py</code></td></tr>
-    <tr><td>3</td><td>Regex pre-extraction from HTML tables, key-value patterns, standards (DIN/ASME/ISO), materials</td><td><code>regex_extractor.py</code>, <code>content_cleaner.py</code></td></tr>
-    <tr><td>4</td><td>LLM validates pre-extracted values + fills gaps via hybrid prompt (priority schema hints + maximize coverage), temperature=0</td><td><code>attribute_extractor.py</code></td></tr>
-    <tr><td>5</td><td>Normalize: 500+ alias mappings &rarr; canonical names, schema-ordered per class</td><td><code>attr_schema.py</code></td></tr>
-    <tr><td>6</td><td>Write per-class Excel with TC Class ID, canonical columns, styled headers</td><td><code>excel_handler.py</code></td></tr>
+    <tr><td>1. Read</td><td>Read input Excel, parse part numbers, manufacturer info, unit of measure</td><td><code>excel_handler.py</code></td></tr>
+    <tr><td>2. Search</td><td>Multi-tier search: 7 tiers from APIs to fallback. DigiKey (OAuth2), Mouser (API key), McMaster (mTLS), CloakBrowser, URL cache, DuckDuckGo + curl_cffi, stealth fallback</td><td><code>web_scraper.py</code>, <code>api_sources.py</code>, <code>stealth_scraper.py</code></td></tr>
+    <tr><td>3. Classify</td><td>Deterministic from web content (95% accuracy) &rarr; LLM cache &rarr; batch LLM (100/call)</td><td><code>class_extractor.py</code>, <code>part_classifier.py</code></td></tr>
+    <tr><td>4. Blind Extract</td><td>Regex pre-extraction from HTML tables, key-value patterns, standards (DIN/ASME/ISO), materials -- before classification is known</td><td><code>regex_extractor.py</code>, <code>content_cleaner.py</code></td></tr>
+    <tr><td>5. Validate</td><td>Attribute-fit validation: check blind-extracted attributes against class schema, flag mismatches, reclassify if needed</td><td><code>class_validator.py</code></td></tr>
+    <tr><td>6. Extract</td><td>LLM validates pre-extracted values + fills gaps via hybrid prompt (priority schema hints + maximize coverage), temperature=0. Unit conversion with as-is mode support</td><td><code>attribute_extractor.py</code></td></tr>
+    <tr><td>7. Write</td><td>Normalize 500+ alias mappings &rarr; canonical names, schema-ordered per class. Write per-class Excel with TC Class ID, canonical columns, styled headers</td><td><code>attr_schema.py</code>, <code>excel_handler.py</code></td></tr>
   </table>
 
   <h2 id="execution-modes">Execution Modes</h2>
@@ -168,7 +170,7 @@ python main.py --clear-cache       # delete cache before run</pre>
     <li>Resume capability via <code>progress.json</code> checkpoint</li>
     <li>Periodic Excel writes every 10 parts</li>
     <li>Retry logic with exponential backoff for timeouts and rate limits</li>
-    <li>CLI flags: <code>--input</code>, <code>--output</code>, <code>--no-cache</code>, <code>--clear-cache</code></li>
+    <li>CLI flags: <code>--input</code>, <code>--output</code>, <code>--fresh</code>, <code>--no-cache</code>, <code>--clear-cache</code></li>
   </ul>
 
   <h3>Claude Code CLI (<code>main_cc.py</code>)</h3>
@@ -261,17 +263,19 @@ LLM_API_KEY=gsk_your_groq_key_here</pre>
   <p>The classification schema is now driven by Teamcenter-compatible JSON files:</p>
 
   <ul>
-    <li><strong><code>input/Classes.json</code></strong> -- Hierarchical class tree with 93 classes. ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Class aliases for web content classification.</li>
-    <li><strong><code>input/Attributes.json</code></strong> -- Attribute dictionary with 46 attributes. 5-digit numeric IDs matching Teamcenter attribute IDs. Includes unitOfMeasure, range, LOV values, and keyLOVID.</li>
+    <li><strong><code>schema/Classes.json</code></strong> -- Hierarchical class tree with 93 classes. ICM-format IDs matching Teamcenter classid. Parent-child tree with attribute inheritance. Class aliases for web content classification.</li>
+    <li><strong><code>schema/Attributes.json</code></strong> -- Attribute dictionary with 46 attributes. 5-digit numeric IDs matching Teamcenter attribute IDs. Includes unitOfMeasure, range, LOV values, and keyLOVID.</li>
+    <li><strong><code>schema/aliases.json</code></strong> -- Auto-generated alias mappings for attribute normalization.</li>
+    <li><strong><code>schema/classification_hints.json</code></strong> -- LLM-generated classification hints keyed by class name, used to improve classification accuracy.</li>
   </ul>
 
-  <p><strong>Attribute inheritance:</strong> Child classes automatically inherit all ancestor attributes. <strong>LOV normalization:</strong> Extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" &rarr; "StainlessSteel"). <strong>Fallback chain:</strong> JSON &rarr; Excel &rarr; hardcoded defaults.</p>
+  <p><strong>Attribute inheritance:</strong> Child classes automatically inherit all ancestor attributes. <strong>LOV normalization:</strong> Extracted values are matched to Teamcenter LOV entries (e.g., "Stainless Steel" &rarr; "StainlessSteel"). Schema files are the single source of truth -- no Excel or hardcoded fallbacks.</p>
 
   <h3>PLMXML Converter</h3>
 
   <p>The included <code>plmxml_to_json.py</code> converts Teamcenter PLMXML exports to the JSON schema format:</p>
 
-  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output input/
+  <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button>python plmxml_to_json.py --plmxml export.xml --sml attributes.xml --output schema/
 python plmxml_to_json.py --plmxml export.xml --dry-run     # preview without writing
 python plmxml_to_json.py --demo                             # generate sample output</pre>
 
@@ -320,10 +324,11 @@ python plmxml_to_json.py --demo                             # generate sample ou
     <li><strong>Regex + LLM agreement tracking:</strong> measures extraction confidence</li>
     <li><strong>Hybrid extraction prompt:</strong> priority schema hints + maximize coverage</li>
     <li><strong>Canonical normalization:</strong> 500+ alias mappings for consistent columns</li>
-    <li><strong>JSON-based schema:</strong> 93 classes, 46 attrs in Classes.json + Attributes.json with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization (fallback: Excel &rarr; hardcoded)</li>
+    <li><strong>JSON-based schema:</strong> 93 classes, 46 attrs in Classes.json + Attributes.json with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization (single source of truth, no fallbacks)</li>
     <li><strong>TC Class ID mapping:</strong> Teamcenter integration in output Excel</li>
-    <li><strong>Unit conversion:</strong> inches &harr; mm per part's unit</li>
+    <li><strong>Unit conversion:</strong> inches &harr; mm per part's unit, with as-is mode for pre-converted values</li>
     <li><strong>Retry logic:</strong> exponential backoff for timeouts (429, 503)</li>
+    <li><strong>Attribute-fit validation:</strong> validates blind-extracted attributes against class schema, reclassifies on mismatch</li>
     <li><strong>Validation retry:</strong> re-extraction for missing attrs when &gt;50% unfilled</li>
     <li><strong>CloakBrowser:</strong> 33 C++ patches, bypasses Cloudflare/reCAPTCHA/FingerprintJS/Turnstile</li>
     <li><strong>Content cleaner:</strong> HTML table extraction + smart truncation (3K/5K/8K limits)</li>
@@ -347,7 +352,7 @@ python plmxml_to_json.py --demo                             # generate sample ou
 
   <p><strong>Vacuum &amp; Semiconductor:</strong> <span class="tag">Vacuum Valve</span><span class="tag">Gate Valve</span><span class="tag">Mass Flow Controller</span><span class="tag">Wafer Shipper</span><span class="tag">Wafer Carrier</span><span class="tag">Gas Filter</span><span class="tag">Liquid Filter</span><span class="tag">Pressure Gauge</span><span class="tag">Vacuum Gauge</span></p>
 
-  <p style="color:var(--muted);font-size:.9rem;margin-top:8px">Other part types handled with default schema. Add new classes via <code>input/Classes.json</code> (preferred), <code>input/ClassificationSchema.xlsx</code> (fallback), or <code>src/attr_schema.py</code> (hardcoded fallback).</p>
+  <p style="color:var(--muted);font-size:.9rem;margin-top:8px">Other part types handled with default schema. Add new classes via <code>schema/Classes.json</code> and regenerate with <code>python generate_schema.py</code>.</p>
 
   <h2 id="project-structure">Project Structure</h2>
 
@@ -356,16 +361,19 @@ python plmxml_to_json.py --demo                             # generate sample ou
 ├── main_cc.py                 # Claude Code CLI (zero API keys)
 ├── app.py                     # Streamlit web UI
 ├── plmxml_to_json.py          # PLMXML → JSON converter
+├── generate_schema.py         # Auto-generate aliases.json + classification_hints.json
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Configuration template (9 providers)
 ├── url_cache.json             # URL cache (30-day TTL, shared)
 ├── llm_cache.json             # LLM response cache (90/30-day TTL)
 ├── metrics_history.json       # Run metrics history
-├── input/
+├── schema/
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree
 │   ├── Attributes.json                # JSON schema: 46 attrs, LOV values, ranges
-│   ├── PartClassifierInput.xlsx       # Sample input
-│   └── ClassificationSchema.xlsx      # Excel schema fallback (81 classes)
+│   ├── aliases.json                   # Auto-generated alias mappings
+│   └── classification_hints.json      # LLM-generated classification hints
+├── input/
+│   └── PartClassifierInput.xlsx       # Sample input
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
@@ -377,9 +385,10 @@ python plmxml_to_json.py --demo                             # generate sample ou
     ├── api_sources.py         # DigiKey (OAuth2) / Mouser (API) / McMaster (mTLS)
     ├── attribute_extractor.py # Hybrid extraction + unit conversion + retry
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
+    ├── class_validator.py     # Attribute-fit validation + reclassification
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # JSON/Excel schema (93 classes, LOV normalization)
+    ├── attr_schema.py         # JSON schema (93 classes, LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
