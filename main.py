@@ -57,29 +57,6 @@ FRESH = _has_flag("--fresh")
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 
-# ── Classification hints (part-name keyword -> class) ─────────────────────
-_HINTS_JSON = BASE_DIR / "schema" / "classification_hints.json"
-_CLASSIFICATION_HINTS: list[dict] = []
-if _HINTS_JSON.exists():
-    try:
-        with open(_HINTS_JSON, "r", encoding="utf-8") as _f:
-            _hdata = json.load(_f)
-            _CLASSIFICATION_HINTS = _hdata.get("hints", []) if isinstance(_hdata, dict) else _hdata
-    except Exception:
-        pass
-
-
-def _classify_hint_from_name(part_name: str) -> str | None:
-    """Extract a classification hint from part name using schema/classification_hints.json."""
-    if not _CLASSIFICATION_HINTS or not part_name:
-        return None
-    name_upper = part_name.upper()
-    for entry in _CLASSIFICATION_HINTS:
-        for kw in entry.get("keywords", []):
-            if kw in name_upper:
-                return entry.get("class")
-    return None
-
 
 async def _retry_llm(coro_fn, label: str):
     """Retry an async LLM call up to MAX_RETRIES times on timeout/transient errors."""
@@ -181,17 +158,20 @@ async def process_part(
     if part_class != original_class:
         print(f"  Mapped  : {original_class} -> {part_class} (JSON)")
 
-    # Sanity check: if part name clearly indicates a class family, validate
-    hint = _classify_hint_from_name(part_name)
-    if hint:
-        hint_mapped, _ = map_to_json_class(hint)
-        hint_root = hint_mapped.split()[-1].lower()
-        class_root = part_class.split()[-1].lower()
-        if hint_root != class_root and hint_root not in part_class.lower():
-            print(f"  Override: {part_class} -> {hint_mapped} (part name says '{hint}')")
-            part_class = hint_mapped
+    # STEP 3 — Validate classification via class-blind attribute extraction
+    from src.class_validator import blind_extract, validate_classification
+    if result.content and part_class not in ("Unclassified", "Error"):
+        blind_attrs = await blind_extract(classifier.llm, result.content)
+        if blind_attrs:
+            print(f"  Blind   : {len(blind_attrs)} attrs extracted")
+            validated, reason = validate_classification(part_class, blind_attrs, part_name)
+            if validated != part_class:
+                print(f"  Validate: {part_class} -> {validated} ({reason})")
+                part_class = validated
+            else:
+                print(f"  Validate: {part_class} {reason}")
 
-    # STEP 3 — Regex pre-extraction
+    # STEP 3b — Regex pre-extraction
     pre_extracted: dict[str, str] = {}
     tables = getattr(result, "tables", None)
     if result.content:
