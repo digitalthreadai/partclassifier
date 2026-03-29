@@ -156,6 +156,11 @@ class LLMClient:
         self.model = (model or os.getenv("LLM_MODEL", "")).strip()
         self._base_url = (base_url or os.getenv("LLM_BASE_URL", "")).strip()
 
+        # Token usage tracking
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+        self.total_api_calls: int = 0
+
         if not self.api_key:
             # Backwards compatibility: fall back to GROQ_API_KEY
             self.api_key = os.getenv("GROQ_API_KEY", "").strip()
@@ -394,6 +399,11 @@ class LLMClient:
                     f"For proxies: check what model names your gateway accepts."
                 ) from e
             raise
+        # Track token usage
+        self.total_api_calls += 1
+        if hasattr(response, "usage") and response.usage:
+            self.total_prompt_tokens += getattr(response.usage, "prompt_tokens", 0)
+            self.total_completion_tokens += getattr(response.usage, "completion_tokens", 0)
         return response.choices[0].message.content.strip()
 
     async def _chat_anthropic(self, messages: list[dict], max_tokens: int,
@@ -418,7 +428,22 @@ class LLMClient:
             kwargs["temperature"] = temperature
 
         response = await self._client.messages.create(**kwargs)
+        # Track token usage
+        self.total_api_calls += 1
+        if hasattr(response, "usage") and response.usage:
+            self.total_prompt_tokens += getattr(response.usage, "input_tokens", 0)
+            self.total_completion_tokens += getattr(response.usage, "output_tokens", 0)
         return response.content[0].text.strip()
+
+    @property
+    def token_usage(self) -> dict:
+        """Return accumulated token usage stats."""
+        return {
+            "prompt_tokens": self.total_prompt_tokens,
+            "completion_tokens": self.total_completion_tokens,
+            "total_tokens": self.total_prompt_tokens + self.total_completion_tokens,
+            "api_calls": self.total_api_calls,
+        }
 
     def display_name(self) -> str:
         """Human-readable string for console output."""

@@ -50,11 +50,29 @@ COLUMN_ALIASES = {
 
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")       # Navy — input + prefix + TC attrs
 AGENT_HEADER_FILL = PatternFill("solid", fgColor="4A4A6A") # Gray-purple — agent-extracted attrs
+METRICS_HEADER_FILL = PatternFill("solid", fgColor="2D5F2D") # Dark green — quality metrics
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
 
+# Conditional fill colors for percentage metrics
+GREEN_FILL = PatternFill("solid", fgColor="1B5E20")    # ≥80%
+AMBER_FILL = PatternFill("solid", fgColor="E65100")    # 50-79%
+RED_FILL = PatternFill("solid", fgColor="B71C1C")      # <50%
+
 # Result columns written before the dynamic attribute columns
 RESULT_PREFIX_COLS = ["Part Class", "TC Class ID", "Source URL"]
+
+# Quality metric columns (after prefix, before TC attrs)
+METRICS_COLS = [
+    "Extraction Coverage %",
+    "Source Reliability %",
+    "Classification Confidence %",
+    "Source Type",
+    "LOV Compliance %",
+    "Validation Action",
+]
+_PCT_METRICS = {"Extraction Coverage %", "Source Reliability %",
+                "Classification Confidence %", "LOV Compliance %"}
 
 
 class ExcelHandler:
@@ -176,9 +194,10 @@ class ExcelHandler:
         # Split into TC attrs (ordered by schema) and agent-extracted attrs
         agent_attrs = [k for k in all_attr_keys if k not in tc_attr_set]
 
-        # Build full column list: input + prefix + TC attrs + agent attrs
-        all_columns = INPUT_COLUMNS + RESULT_PREFIX_COLS + tc_attrs + agent_attrs
-        tc_attr_start = len(INPUT_COLUMNS) + len(RESULT_PREFIX_COLS)
+        # Build full column list: input + prefix + metrics + TC attrs + agent attrs
+        all_columns = INPUT_COLUMNS + RESULT_PREFIX_COLS + METRICS_COLS + tc_attrs + agent_attrs
+        metrics_start = len(INPUT_COLUMNS) + len(RESULT_PREFIX_COLS)
+        tc_attr_start = metrics_start + len(METRICS_COLS)
         agent_attr_start = tc_attr_start + len(tc_attrs)
 
         wb = openpyxl.Workbook()
@@ -188,8 +207,10 @@ class ExcelHandler:
         # Write headers with color coding
         for col_idx, header in enumerate(all_columns, start=1):
             cell = ws.cell(row=1, column=col_idx, value=header)
-            # Color: TC attrs (navy), agent attrs (gray-purple)
-            if col_idx > agent_attr_start:
+            # Color: metrics (green), TC attrs (navy), agent attrs (gray-purple)
+            if metrics_start < col_idx <= tc_attr_start:
+                cell.fill = METRICS_HEADER_FILL
+            elif col_idx > agent_attr_start:
                 cell.fill = AGENT_HEADER_FILL
             else:
                 cell.fill = HEADER_FILL
@@ -212,8 +233,30 @@ class ExcelHandler:
             ws.cell(row=row_idx, column=offset + 1, value=r.get("tc_class_id", ""))
             ws.cell(row=row_idx, column=offset + 2, value=str(r.get("source_url", "")))
 
+            # Quality metrics columns
+            _metrics_map = {
+                "Extraction Coverage %": r.get("extraction_coverage", ""),
+                "Source Reliability %": r.get("source_reliability", ""),
+                "Classification Confidence %": r.get("classification_confidence", ""),
+                "Source Type": r.get("source_type", ""),
+                "LOV Compliance %": r.get("lov_compliance", ""),
+                "Validation Action": r.get("validation_action", ""),
+            }
+            for mi, mc in enumerate(METRICS_COLS):
+                val = _metrics_map.get(mc, "")
+                cell = ws.cell(row=row_idx, column=offset + len(RESULT_PREFIX_COLS) + mi, value=val)
+                # Color-code percentage cells
+                if mc in _PCT_METRICS and isinstance(val, (int, float)):
+                    if val >= 80:
+                        cell.fill = GREEN_FILL
+                    elif val >= 50:
+                        cell.fill = AMBER_FILL
+                    else:
+                        cell.fill = RED_FILL
+                    cell.font = Font(bold=True, color="FFFFFF")
+
             # Attribute columns (TC attrs first, then agent attrs)
-            attr_offset = offset + len(RESULT_PREFIX_COLS)
+            attr_offset = offset + len(RESULT_PREFIX_COLS) + len(METRICS_COLS)
             for i, key in enumerate(ordered_attr_keys):
                 ws.cell(row=row_idx, column=attr_offset + i, value=attrs.get(key, ""))
 

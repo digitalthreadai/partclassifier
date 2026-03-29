@@ -109,6 +109,7 @@ async def process_part(
 
     # STEP 2 — Classify: try deterministic extraction from web content first
     part_class = None
+    classify_source = "fallback"
     classify_text = part_name or (result.content[:500] if result.content else f"{mfg_name} {mfg_part_num}")
 
     # Try pattern matching on scraped content (no LLM needed)
@@ -118,6 +119,7 @@ async def process_part(
             mfg_name=mfg_name, mfg_part_num=mfg_part_num,
         )
         if part_class:
+            classify_source = "web_high"
             print(f"  Class   : {part_class}  (from web content)")
 
     # Try LLM cache
@@ -126,6 +128,7 @@ async def process_part(
         cached_class = llm_cache.get_classification(classify_text)
         if cached_class:
             part_class = cached_class
+            classify_source = "cache"
             print(f"  Class   : {part_class}  (cached)")
             if metrics:
                 metrics.record_cache_hit("classify")
@@ -145,6 +148,7 @@ async def process_part(
         )
         if not part_class:
             part_class = "Unclassified"
+        classify_source = "llm"
         print(f"  Class   : {part_class}  (LLM)")
         if metrics:
             metrics.record_llm_call("classify")
@@ -160,16 +164,17 @@ async def process_part(
 
     # STEP 3 — Validate classification via class-blind attribute extraction
     from src.class_validator import blind_extract, validate_classification
+    validation_reason = ""
     if result.content and part_class not in ("Unclassified", "Error"):
         blind_attrs = await blind_extract(classifier.llm, result.content)
         if blind_attrs:
             print(f"  Blind   : {len(blind_attrs)} attrs extracted")
-            validated, reason = validate_classification(part_class, blind_attrs, part_name)
+            validated, validation_reason = validate_classification(part_class, blind_attrs, part_name)
             if validated != part_class:
-                print(f"  Validate: {part_class} -> {validated} ({reason})")
+                print(f"  Validate: {part_class} -> {validated} ({validation_reason})")
                 part_class = validated
             else:
-                print(f"  Validate: {part_class} {reason}")
+                print(f"  Validate: {part_class} {validation_reason}")
 
     # STEP 3b — Regex pre-extraction
     pre_extracted: dict[str, str] = {}
@@ -216,9 +221,11 @@ async def process_part(
             if metrics:
                 metrics.record_llm_call("extract")
             # Log regex/LLM agreement
-            if pre_extracted and attributes and metrics:
-                agreement = compute_agreement(pre_extracted, attributes)
-                metrics.record_regex(0, agreement)  # 0 = don't double-count
+            regex_agreement = None
+            if pre_extracted and attributes:
+                regex_agreement = compute_agreement(pre_extracted, attributes)
+                if metrics:
+                    metrics.record_regex(0, regex_agreement)  # 0 = don't double-count
             # Cache extraction
             if llm_cache and attributes and result.content:
                 llm_cache.set_extraction(mfg_part_num, part_class, result.content, attributes)
@@ -271,6 +278,17 @@ async def process_part(
             attr_count=len(attributes),
         )
 
+    # Compute per-part quality metrics
+    from src.confidence import (
+        compute_extraction_coverage, compute_source_reliability,
+        compute_classification_confidence, get_source_type,
+        compute_lov_compliance, get_validation_action,
+    )
+    mfg_pn_in_content = bool(
+        result.content and mfg_part_num and mfg_part_num.lower() in result.content.lower()
+    )
+    _regex_agr = regex_agreement if "regex_agreement" in dir() else None
+
     return {
         "part":         part,
         "part_class":   part_class,
@@ -278,6 +296,18 @@ async def process_part(
         "in_json":      in_json,
         "attributes":   attributes,
         "source_url":   source_url or "",
+        # Quality metrics
+        "extraction_coverage": compute_extraction_coverage(attributes, part_class),
+        "source_reliability": compute_source_reliability(
+            getattr(result, "source_name", ""), mfg_pn_in_content,
+            attributes, part_class, _regex_agr,
+        ),
+        "classification_confidence": compute_classification_confidence(
+            classify_source, validation_reason, in_json,
+        ),
+        "source_type": get_source_type(getattr(result, "source_name", "")),
+        "lov_compliance": compute_lov_compliance(attributes),
+        "validation_action": get_validation_action(validation_reason),
     }
 
 
@@ -403,6 +433,17 @@ async def main() -> None:
     written = handler.write_class_files(results)
     for path in written:
         print(f"  -> {path}")
+
+    # Generate HTML executive summary
+    from src.report_generator import generate_run_summary
+    metrics_dict = run_metrics.summary()
+    generate_run_summary(
+        results, metrics_dict, llm.token_usage,
+        OUTPUT_DIR / "run_summary.html",
+        input_file=EXCEL_PATH.name,
+        model_name=llm.display_name(),
+    )
+
     print(f"Done. {completed} parts processed.")
 
 
