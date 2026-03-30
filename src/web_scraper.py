@@ -27,12 +27,28 @@ if not SSL_VERIFY:
     print("  WARNING: SSL verification disabled (SSL_VERIFY=false)")
 from src.shared import load_cache, save_cache
 
-# Optional stealth browser for bot-protected sites (McMaster-Carr, etc.)
-try:
-    from src.stealth_scraper import StealthScraper, stealth_available
-    _HAS_STEALTH = stealth_available()
-except ImportError:
-    _HAS_STEALTH = False
+# Stealth engine selection: auto | camofox | cloakbrowser | none
+_STEALTH_ENGINE = os.getenv("STEALTH_ENGINE", "auto").lower()
+
+# Try CamoFox first (Firefox-based anti-detection via REST API)
+_HAS_CAMOFOX = False
+if _STEALTH_ENGINE in ("auto", "camofox"):
+    try:
+        from src.camofox_scraper import CamoFoxScraper, camofox_available
+        _HAS_CAMOFOX = camofox_available()
+    except ImportError:
+        pass
+
+# Then CloakBrowser (Chromium-based anti-detection via Playwright)
+_HAS_CLOAKBROWSER = False
+if _STEALTH_ENGINE in ("auto", "cloakbrowser"):
+    try:
+        from src.stealth_scraper import StealthScraper, stealth_available
+        _HAS_CLOAKBROWSER = stealth_available()
+    except ImportError:
+        pass
+
+_HAS_STEALTH = _HAS_CAMOFOX or _HAS_CLOAKBROWSER
 
 MIN_USEFUL_CHARS = 400
 MAX_CONTENT_CHARS = 10_000
@@ -53,8 +69,10 @@ class WebScraper:
         self._session = cffi_requests.Session(impersonate="chrome124", verify=SSL_VERIFY)
         self._cache = load_cache(_CACHE_PATH)
         self._api_sources = get_api_sources()
-        self._stealth: StealthScraper | None = None
-        if _HAS_STEALTH:
+        self._stealth = None  # CamoFoxScraper or StealthScraper (lazy init)
+        if _HAS_CAMOFOX:
+            print("  [Stealth] CamoFox available (will connect on first use)")
+        elif _HAS_CLOAKBROWSER:
             print("  [Stealth] CloakBrowser available (will launch on first use)")
 
     async def __aenter__(self):
@@ -65,14 +83,22 @@ class WebScraper:
         if self._stealth:
             await self._stealth.close()
 
-    async def _ensure_stealth(self) -> StealthScraper | None:
-        """Lazily launch the stealth browser on first use."""
-        if not _HAS_STEALTH:
-            return None
-        if self._stealth is None:
+    async def _ensure_stealth(self):
+        """Lazily launch the stealth browser on first use.
+
+        Prefers CamoFox (Firefox) over CloakBrowser (Chromium).
+        """
+        if self._stealth is not None:
+            return self._stealth
+        if _HAS_CAMOFOX:
+            self._stealth = CamoFoxScraper()
+            await self._stealth.launch()
+            return self._stealth
+        if _HAS_CLOAKBROWSER:
             self._stealth = StealthScraper()
             await self._stealth.launch()
-        return self._stealth
+            return self._stealth
+        return None
 
     # ── Public API ────────────────────────────────────────────────────────────
 
