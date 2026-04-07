@@ -375,7 +375,7 @@ async def process_part(
             classify_source, validation_reason, in_json,
         ),
         "source_type": get_source_type(effective_source_name),
-        "lov_compliance": compute_lov_compliance(attributes, lov_mismatches),
+        "lov_compliance": compute_lov_compliance(attributes, part_class, lov_mismatches),
         "validation_action": get_validation_action(validation_reason),
     }
 

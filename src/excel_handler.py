@@ -201,7 +201,7 @@ class ExcelHandler:
         seen_mm: set[str] = set()
         for r in results:
             for k in r.get("lov_mismatches", {}).keys():
-                if k not in seen_mm:
+                if k not in seen_mm and k in tc_attr_set:  # Only TC attrs for this class
                     lov_mismatch_attrs.append(k)
                     seen_mm.add(k)
         # Sort by TC schema position (O(1) per lookup); non-schema attrs go last

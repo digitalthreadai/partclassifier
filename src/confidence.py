@@ -188,18 +188,22 @@ def get_source_type(source_name: str) -> str:
 
 # ── Column 5: LOV Compliance % ─────────────────────────────────────────────
 
-def compute_lov_compliance(attributes: dict, lov_mismatches: dict | None = None) -> float:
-    """Percentage of LOV-governed attributes whose values match a valid LOV entry.
+def compute_lov_compliance(attributes: dict, part_class: str, lov_mismatches: dict | None = None) -> float:
+    """Percentage of LOV-governed TC attributes whose values match a valid LOV entry.
 
     Uses lov_mismatches (from normalize_attrs_with_lov_status) as the source of
     truth — guarantees agreement with the LOV-mismatch flag columns in Excel.
+    Only counts attributes that are in the TC schema for the given class.
 
-    Returns 0-100. If no LOV-governed attributes were extracted, returns 100.
+    Returns 0-100. If no LOV-governed TC attributes were extracted, returns 100.
     """
-    # Count LOV-governed attributes that were actually extracted
+    schema_set = set(get_schema(part_class)) if part_class else None
+    # Count LOV-governed TC attributes that were actually extracted
     lov_total = sum(
         1 for k in attributes
-        if ALIASES.get(k.strip().lower(), k.strip()) in LOV_MAP and attributes[k]
+        if (canonical := ALIASES.get(k.strip().lower(), k.strip())) in LOV_MAP
+        and attributes[k]
+        and (schema_set is None or canonical in schema_set)
     )
 
     if lov_total == 0:
