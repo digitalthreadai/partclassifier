@@ -72,7 +72,7 @@ def generate_run_summary(
             pn = r.get("part", {}).get("Manufacturer Part Number", "")
             name = r.get("part", {}).get("Part Name", "")
             low_conf.append({
-                "pn": pn, "name": name[:50], "class": r.get("part_class", ""),
+                "pn": pn, "name": (name or "")[:50], "class": r.get("part_class", ""),
                 "coverage": ec, "reliability": sr, "confidence": cc,
             })
 
