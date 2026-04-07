@@ -1,7 +1,7 @@
 """Extract structured dimensions from raw product content using an LLM."""
 
 from src.llm_client import LLMClient
-from src.attr_schema import get_schema, normalize_attrs
+from src.attr_schema import get_schema, normalize_attrs, normalize_attrs_with_lov_status
 import json
 import re
 
@@ -85,8 +85,11 @@ def _single_value(value: str, part_name: str) -> str:
     return parts[0].strip()
 
 
-def _clean_result(result: dict, part_class: str, part_name: str = "") -> dict:
-    """Remove junk keys, enforce single values, and normalize."""
+def _clean_result(result: dict, part_class: str, part_name: str = "") -> tuple[dict, dict]:
+    """Remove junk keys, enforce single values, normalize, and track LOV mismatches.
+
+    Returns (normalized_attrs, lov_mismatches).
+    """
     skip_keys = {"part number", "part name", "part no", "part #", "_source_url",
                   "description", "features", "overview", "product name", "category",
                   "manufacturer", "brand", "model", "series", "url", "image"}
@@ -101,7 +104,7 @@ def _clean_result(result: dict, part_class: str, part_name: str = "") -> dict:
         if part_name:
             vs = _single_value(vs, part_name)
         cleaned[k] = vs
-    return normalize_attrs(cleaned, part_class)
+    return normalize_attrs_with_lov_status(cleaned, part_class)
 
 
 class AttributeExtractor:
@@ -110,11 +113,18 @@ class AttributeExtractor:
 
     async def extract(self, raw_content: str, part_class: str, mfg_part_num: str,
                       part_name: str = "", unit_of_measure: str = "",
-                      pre_extracted: dict[str, str] | None = None) -> dict[str, str]:
-        """Parse raw page text and return a dict of attribute -> value.
+                      pre_extracted: dict[str, str] | None = None
+                      ) -> tuple[dict[str, str], dict[str, str]]:
+        """Parse raw page text and return (attributes, lov_mismatches).
 
         Args:
             pre_extracted: Optional regex-extracted values for LLM to validate/augment.
+
+        Returns:
+            (attributes, lov_mismatches)
+            attributes: dict[canonical_name, value] - normalized attributes
+            lov_mismatches: dict[canonical_name, original_value] - LOV-governed
+                            attrs whose value did NOT match any LOV entry
         """
         truncated = raw_content[:MAX_CONTENT_CHARS]
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
@@ -181,7 +191,7 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        attrs = _clean_result(result, part_class, part_name=part_name)
+        attrs, lov_mismatches = _clean_result(result, part_class, part_name=part_name)
 
         # Validation retry: only if first attempt returned SOME data but missed
         # >50% of SCHEMA attrs (count schema hits, not total attrs)
@@ -194,9 +204,13 @@ class AttributeExtractor:
                     truncated, part_class, mfg_part_num, unit_short, convert_note, missing
                 )
                 if retry_attrs:
-                    attrs.update(retry_attrs)
+                    # Re-normalize the merged dict to track new LOV mismatches
+                    merged = {**attrs, **retry_attrs}
+                    attrs, lov_mismatches = _clean_result(
+                        merged, part_class, part_name=part_name
+                    )
 
-        return attrs
+        return attrs, lov_mismatches
 
     async def _retry_missing(self, content: str, part_class: str, mfg_part_num: str,
                               unit_short: str, convert_note: str,
@@ -229,8 +243,12 @@ class AttributeExtractor:
             return {}
 
     async def extract_from_part_name(self, part_name: str, part_class: str,
-                                     mfg_part_num: str, unit_of_measure: str = "") -> dict[str, str]:
-        """Fallback: extract any dimensions encoded in the part name itself."""
+                                     mfg_part_num: str, unit_of_measure: str = ""
+                                     ) -> tuple[dict[str, str], dict[str, str]]:
+        """Fallback: extract any dimensions encoded in the part name itself.
+
+        Returns (attributes, lov_mismatches).
+        """
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
         schema_attrs = get_schema(part_class)
 
@@ -258,4 +276,4 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        return normalize_attrs(result, part_class)
+        return normalize_attrs_with_lov_status(result, part_class)

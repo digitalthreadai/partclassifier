@@ -51,6 +51,7 @@ COLUMN_ALIASES = {
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")       # Navy — input + prefix + TC attrs
 AGENT_HEADER_FILL = PatternFill("solid", fgColor="4A4A6A") # Gray-purple — agent-extracted attrs
 METRICS_HEADER_FILL = PatternFill("solid", fgColor="2D5F2D") # Dark green — quality metrics
+LOV_MISMATCH_HEADER_FILL = PatternFill("solid", fgColor="C04040")  # Red — LOV mismatch flag
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
 
@@ -58,6 +59,7 @@ CENTER = Alignment(horizontal="center", wrap_text=True)
 GREEN_FILL = PatternFill("solid", fgColor="1B5E20")    # ≥80%
 AMBER_FILL = PatternFill("solid", fgColor="E65100")    # 50-79%
 RED_FILL = PatternFill("solid", fgColor="B71C1C")      # <50%
+LOV_MISMATCH_CELL_FILL = PatternFill("solid", fgColor="6B2020")  # Dark red — LOV mismatch cell
 
 # Result columns written before the dynamic attribute columns
 RESULT_PREFIX_COLS = ["Part Class", "TC Class ID", "Source URL"]
@@ -173,7 +175,7 @@ class ExcelHandler:
     def _write_one_class(self, cls: str, results: list[dict]) -> str:
         """Write a single per-class Excel file. Returns the file path.
 
-        Column order: INPUT_COLUMNS + RESULT_PREFIX_COLS + TC_ATTRS (navy) + AGENT_ATTRS (gray)
+        Column order: INPUT + PREFIX + METRICS + TC_ATTRS (navy) + LOV_MISMATCH (red) + AGENT_ATTRS (gray)
         TC attrs include inherited attributes from parent classes in Classes.json.
         """
         from src.attr_schema import get_schema
@@ -194,11 +196,25 @@ class ExcelHandler:
         # Split into TC attrs (ordered by schema) and agent-extracted attrs
         agent_attrs = [k for k in all_attr_keys if k not in tc_attr_set]
 
-        # Build full column list: input + prefix + metrics + TC attrs + agent attrs
-        all_columns = INPUT_COLUMNS + RESULT_PREFIX_COLS + METRICS_COLS + tc_attrs + agent_attrs
+        # Build LOV mismatch columns: any attr that had a mismatch in any row
+        lov_mismatch_attrs: list[str] = []
+        seen_mm: set[str] = set()
+        for r in results:
+            for k in r.get("lov_mismatches", {}).keys():
+                if k not in seen_mm:
+                    lov_mismatch_attrs.append(k)
+                    seen_mm.add(k)
+        # Use canonical TC order if attrs are in schema; else preserve insertion order
+        lov_mismatch_attrs.sort(key=lambda k: tc_attrs.index(k) if k in tc_attr_set else 9999)
+        lov_mismatch_cols = [f"{k}-NotPresentInLOV" for k in lov_mismatch_attrs]
+
+        # Build full column list: input + prefix + metrics + TC attrs + LOV-mismatch + agent attrs
+        all_columns = (INPUT_COLUMNS + RESULT_PREFIX_COLS + METRICS_COLS
+                       + tc_attrs + lov_mismatch_cols + agent_attrs)
         metrics_start = len(INPUT_COLUMNS) + len(RESULT_PREFIX_COLS)
         tc_attr_start = metrics_start + len(METRICS_COLS)
-        agent_attr_start = tc_attr_start + len(tc_attrs)
+        lov_mismatch_start = tc_attr_start + len(tc_attrs)
+        agent_attr_start = lov_mismatch_start + len(lov_mismatch_cols)
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -209,13 +225,17 @@ class ExcelHandler:
         # Write headers with color coding
         for col_idx, header in enumerate(all_columns, start=1):
             cell = ws.cell(row=1, column=col_idx, value=header)
-            # Color: metrics (green), TC attrs (navy), agent attrs (gray-purple)
+            # Color: metrics (green), TC attrs (navy), LOV mismatch (red), agent attrs (gray-purple)
             if metrics_start < col_idx <= tc_attr_start:
                 cell.fill = METRICS_HEADER_FILL
+            elif tc_attr_start < col_idx <= lov_mismatch_start:
+                cell.fill = HEADER_FILL  # TC attrs (navy)
+            elif lov_mismatch_start < col_idx <= agent_attr_start:
+                cell.fill = LOV_MISMATCH_HEADER_FILL  # LOV mismatch flag (red)
             elif col_idx > agent_attr_start:
-                cell.fill = AGENT_HEADER_FILL
+                cell.fill = AGENT_HEADER_FILL  # agent extras (gray-purple)
             else:
-                cell.fill = HEADER_FILL
+                cell.fill = HEADER_FILL  # input + prefix (navy)
             cell.font = HEADER_FONT
             cell.alignment = CENTER
 
@@ -224,6 +244,7 @@ class ExcelHandler:
         for row_idx, r in enumerate(results, start=2):
             part = r.get("part", {})
             attrs = r.get("attributes", {})
+            row_mismatches = r.get("lov_mismatches", {})
 
             # Input columns
             for col_idx, col_name in enumerate(INPUT_COLUMNS, start=1):
@@ -257,10 +278,26 @@ class ExcelHandler:
                         cell.fill = RED_FILL
                     cell.font = Font(bold=True, color="FFFFFF")
 
-            # Attribute columns (TC attrs first, then agent attrs)
+            # TC attribute columns (no agent attrs yet)
             attr_offset = offset + len(RESULT_PREFIX_COLS) + len(METRICS_COLS)
-            for i, key in enumerate(ordered_attr_keys):
+            for i, key in enumerate(tc_attrs):
                 ws.cell(row=row_idx, column=attr_offset + i, value=attrs.get(key, ""))
+
+            # LOV mismatch columns (red headers, dark red cells with original value)
+            mm_offset = attr_offset + len(tc_attrs)
+            for i, mm_attr in enumerate(lov_mismatch_attrs):
+                if mm_attr in row_mismatches:
+                    cell = ws.cell(row=row_idx, column=mm_offset + i,
+                                   value=row_mismatches[mm_attr])
+                    cell.fill = LOV_MISMATCH_CELL_FILL
+                    cell.font = Font(bold=True, color="FFFFFF")
+                else:
+                    ws.cell(row=row_idx, column=mm_offset + i, value="")
+
+            # Agent attribute columns (gray-purple)
+            agent_offset = mm_offset + len(lov_mismatch_cols)
+            for i, key in enumerate(agent_attrs):
+                ws.cell(row=row_idx, column=agent_offset + i, value=attrs.get(key, ""))
 
         # Auto-size columns
         for col in ws.columns:

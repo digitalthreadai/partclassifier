@@ -35,6 +35,7 @@ def compute_extraction_coverage(attributes: dict, part_class: str) -> float:
 # ── Column 2: Source Reliability % ──────────────────────────────────────────
 
 _SOURCE_SCORES = {
+    "spec file": 100,    # Local spec is the most authoritative source
     "api": 100,
     "stealth": 80,
     "web (cached)": 75,
@@ -170,6 +171,8 @@ def get_source_type(source_name: str) -> str:
     if not source_name:
         return "None"
     s = source_name.lower()
+    if s.startswith("file/") or "spec file" in s:
+        return "Spec File"
     if "api" in s or "digikey" in s or "mouser" in s or "mcmaster" in s:
         return "API"
     if "stealth" in s:

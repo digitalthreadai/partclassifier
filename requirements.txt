@@ -7,3 +7,5 @@ anthropic>=0.40.0          # only needed if using LLM_PROVIDER=anthropic
 httpx>=0.27.0              # async HTTP for distributor APIs (DigiKey, Mouser, McMaster)
 streamlit>=1.38.0          # web UI
 cloakbrowser>=0.3.0        # optional: stealth browser for bot-protected sites (McMaster-Carr)
+pdfplumber>=0.11.0         # native text + table extraction from PDFs (specs folder)
+PyMuPDF>=1.24.0            # PDF page rendering for scanned PDFs (vision LLM fallback)

@@ -47,6 +47,7 @@ CLASS_ALIASES: dict[str, str] = {}         # lowercase class alias -> canonical 
 CLASS_TREE_CHILDREN: dict[str, list[str]] = {}  # parent name -> [child names]
 LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values
 ATTR_DICT: dict[str, dict] = {}            # attr id -> full attribute record
+ATTR_DATATYPES: dict[str, str] = {}        # canonical attr name -> datatype string (float/string/etc)
 _DEFAULT_SCHEMA: list[str] = []
 _SCHEMA_SOURCE: str = "none"               # "json" or "none"
 
@@ -84,6 +85,10 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         # Populate LOV_MAP
         if attr.get("lov"):
             LOV_MAP[canonical] = attr["lov"]
+
+        # Populate ATTR_DATATYPES (optional field — supports float/string range averaging)
+        if attr.get("datatype"):
+            ATTR_DATATYPES[canonical] = attr["datatype"]
 
     # --- Load classes ---
     with open(classes_path, "r", encoding="utf-8") as f:
@@ -215,7 +220,11 @@ _load_schema()
 # ── LOV normalization helper ─────────────────────────────────────────────────
 
 def _normalize_key(s: str) -> str:
-    """Lowercase, strip spaces, hyphens, underscores for fuzzy matching."""
+    """Lowercase, strip spaces, hyphens, underscores for fuzzy matching.
+
+    Critical: strips underscores so Teamcenter LOVs like "AC_POWER" match
+    web-extracted values like "AC Power" and "ac-power".
+    """
     return re.sub(r"[\s\-_]", "", s.lower())
 
 
@@ -224,13 +233,71 @@ def _normalize_to_lov(value: str, lov_values: list[str]) -> str:
 
     "Stainless Steel" -> "StainlessSteel"
     "zinc plated" -> "ZincPlated"
+    "AC Power" -> "AC_POWER"
     Returns the original value if no match found.
     """
+    matched, _ = _fuzzy_match_lov(value, lov_values)
+    return matched if matched is not None else value
+
+
+def _fuzzy_match_lov(value: str, lov_values: list[str]) -> tuple[str | None, bool]:
+    """Try to match `value` to a LOV entry using cascading fuzzy strategies.
+
+    Returns:
+        (matched_lov_entry, True)  if a match was found
+        (None, False)              if no LOV entry matched
+
+    Strategies (in order of strictness):
+        1. Exact normalized equality (strips spaces/hyphens/underscores)
+        2. Substring containment ("303 stainless steel" -> "stainlesssteel")
+        3. Word-overlap (all LOV words appear in value, e.g., "Stainless Steel 313" -> "StainlessSteel")
+    """
+    if not value or not lov_values:
+        return (None, False)
+
     norm_val = _normalize_key(value)
+    if not norm_val:
+        return (None, False)
+
+    # Strategy 1: exact normalized equality
     for lov_entry in lov_values:
         if _normalize_key(lov_entry) == norm_val:
-            return lov_entry
-    return value
+            return (lov_entry, True)
+
+    # Strategy 2: substring containment (LOV inside value, or value inside LOV)
+    for lov_entry in lov_values:
+        norm_lov = _normalize_key(lov_entry)
+        if not norm_lov:
+            continue
+        if norm_lov in norm_val or norm_val in norm_lov:
+            return (lov_entry, True)
+
+    # Strategy 3: word-overlap — split LOV by camelCase/spaces/underscores
+    # and check if all LOV "words" appear in the value
+    val_lower = value.lower()
+    val_words = set(re.findall(r"[a-z0-9]+", val_lower))
+    if not val_words:
+        return (None, False)
+
+    best_match = None
+    best_score = 0
+    for lov_entry in lov_values:
+        # Split CamelCase: "StainlessSteel" -> ["stainless", "steel"]
+        # Also split on spaces, hyphens, underscores
+        lov_words = re.findall(r"[A-Z]?[a-z0-9]+", lov_entry)
+        lov_words = [w.lower() for w in lov_words if len(w) >= 2]
+        if not lov_words:
+            continue
+        # All LOV words must be present in value
+        overlap = sum(1 for w in lov_words if w in val_words)
+        if overlap == len(lov_words) and overlap > best_score:
+            best_score = overlap
+            best_match = lov_entry
+
+    if best_match:
+        return (best_match, True)
+
+    return (None, False)
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -341,16 +408,29 @@ def schema_source() -> str:
     return _SCHEMA_SOURCE
 
 
-def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
+def normalize_attrs_with_lov_status(
+    raw: dict, part_class: str
+) -> tuple[dict[str, str], dict[str, str]]:
     """
     1. Map raw LLM keys to TC attribute names via exact alias lookup.
-    2. LOV-normalize values where applicable.
-    3. Order: TC schema attrs first, then unmatched LLM keys at the end.
-    Returns a plain dict with consistent, canonical keys.
+    2. LOV-normalize values where applicable (with improved fuzzy matching).
+    3. Range-average numeric attributes (if datatype is float/double/int).
+    4. Track LOV mismatches: values for LOV-governed attrs that didn't match any entry.
+    5. Order: TC schema attrs first, then unmatched LLM keys at the end.
+
+    Returns:
+        (ordered_attrs, lov_mismatches)
+        ordered_attrs: dict[canonical_name, value] - the normalized attributes
+        lov_mismatches: dict[canonical_name, original_value] - LOV-governed attrs
+                        whose value did NOT match any LOV entry
     """
+    from src.range_handler import average_range
+
     schema = get_schema(part_class)
 
     normalized: dict[str, str] = {}
+    lov_mismatches: dict[str, str] = {}
+
     for k, v in raw.items():
         k_lower = k.strip().lower()
         # Exact alias lookup (from Attributes.json name/shortname/aliases) or keep original
@@ -362,8 +442,20 @@ def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
                 break
 
         str_val = str(v).strip()
-        if canonical in LOV_MAP and str_val:
-            str_val = _normalize_to_lov(str_val, LOV_MAP[canonical])
+        if not str_val:
+            continue
+
+        # LOV normalization with mismatch tracking
+        if canonical in LOV_MAP:
+            matched, ok = _fuzzy_match_lov(str_val, LOV_MAP[canonical])
+            if ok:
+                str_val = matched
+            else:
+                # Record mismatch (keep original value in normalized too — per user request)
+                lov_mismatches[canonical] = str_val
+
+        # Range averaging (for numeric attributes)
+        str_val = average_range(str_val, ATTR_DATATYPES.get(canonical))
 
         normalized[canonical] = str_val
 
@@ -376,4 +468,13 @@ def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
         if key not in ordered:
             ordered[key] = val
 
+    return ordered, lov_mismatches
+
+
+def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
+    """Backwards-compatible wrapper around normalize_attrs_with_lov_status.
+
+    Returns only the normalized dict (without LOV mismatch tracking).
+    """
+    ordered, _ = normalize_attrs_with_lov_status(raw, part_class)
     return ordered

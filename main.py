@@ -88,14 +88,16 @@ async def process_part(
 ) -> dict:
     from src.class_extractor import extract_class_from_content
     from src.regex_extractor import regex_extract, compute_agreement
-    from src.attr_schema import normalize_attrs, get_tc_class_id, map_to_json_class
+    from src.attr_schema import normalize_attrs_with_lov_status, get_tc_class_id, map_to_json_class
     from src.shared import save_cache
     from src.web_scraper import _CACHE_PATH
+    from src.file_extractor import find_spec_file, extract_from_file
 
     mfg_part_num    = str(part.get("Manufacturer Part Number") or "").strip()
     mfg_name        = str(part.get("Manufacturer Name")        or "").strip()
     part_name       = str(part.get("Part Name")                or "").strip()
     unit_of_measure = str(part.get("Unit of Measure")          or "").strip().lower()
+    part_number     = str(part.get("Part Number")              or "").strip()
 
     print(f"\n{'-'*60}")
     print(f"  Part #  : {mfg_part_num}")
@@ -103,24 +105,42 @@ async def process_part(
     print(f"  Maker   : {mfg_name}")
     print(f"  Unit    : {unit_of_measure}")
 
-    # STEP 1 — Search the web FIRST (before classification)
+    # STEP 0 — File Content Search (Tier 0, runs BEFORE web/API)
+    # File-extracted attributes are AUTHORITATIVE — they cannot be overridden by web.
+    file_result = None
+    file_attrs: dict[str, str] = {}
+    file_lov_mismatches: dict[str, str] = {}
+    spec_file = find_spec_file(part_number, mfg_part_num)
+    if spec_file:
+        print(f"  Spec file: {spec_file.name}")
+        file_result = await extract_from_file(spec_file, classifier.llm)
+
+    # STEP 1 — Search the web (always — file content + web are merged later)
     print(f"  Searching: {mfg_name} {mfg_part_num} ...")
     result = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
 
-    # STEP 2 — Classify: try deterministic extraction from web content first
+    # STEP 2 — Classify
+    # Prefer file content for classification (more authoritative than web)
     part_class = None
     classify_source = "fallback"
-    classify_text = part_name or (result.content[:500] if result.content else f"{mfg_name} {mfg_part_num}")
 
-    # Try pattern matching on scraped content (no LLM needed)
-    if result.content and len(result.content) >= 100:
+    # Build classify content: file content takes priority over web content
+    classify_content = (file_result.content if file_result and file_result.content
+                        else result.content)
+    classify_text = part_name or (classify_content[:500] if classify_content
+                                  else f"{mfg_name} {mfg_part_num}")
+
+    # Try pattern matching on content (file or web), no LLM needed
+    if classify_content and len(classify_content) >= 100:
         part_class = extract_class_from_content(
-            result.content, result.source_url or "",
+            classify_content,
+            (file_result.source_url if file_result else result.source_url) or "",
             mfg_name=mfg_name, mfg_part_num=mfg_part_num,
         )
         if part_class:
             classify_source = "web_high"
-            print(f"  Class   : {part_class}  (from web content)")
+            src_label = "spec file" if file_result else "web content"
+            print(f"  Class   : {part_class}  (from {src_label})")
 
     # Try LLM cache
     if not part_class and llm_cache:
@@ -165,8 +185,8 @@ async def process_part(
     # STEP 3 — Validate classification via class-blind attribute extraction
     from src.class_validator import blind_extract, validate_classification
     validation_reason = ""
-    if result.content and part_class not in ("Unclassified", "Error"):
-        blind_attrs = await blind_extract(classifier.llm, result.content)
+    if classify_content and part_class not in ("Unclassified", "Error"):
+        blind_attrs = await blind_extract(classifier.llm, classify_content)
         if blind_attrs:
             print(f"  Blind   : {len(blind_attrs)} attrs extracted")
             validated, validation_reason = validate_classification(part_class, blind_attrs, part_name)
@@ -176,7 +196,24 @@ async def process_part(
             else:
                 print(f"  Validate: {part_class} {validation_reason}")
 
-    # STEP 3b — Regex pre-extraction
+    # STEP 3b — Extract from spec file (Tier 0, AUTHORITATIVE — never overridden)
+    if file_result and file_result.content:
+        print(f"  File    : extracting from spec file...")
+        file_extracted = await _retry_llm(
+            lambda: attr_extractor.extract(
+                file_result.content, part_class, mfg_part_num,
+                part_name or classify_text, unit_of_measure,
+                pre_extracted=None,
+            ),
+            "ExtractFromFile"
+        )
+        if file_extracted:
+            file_attrs, file_lov_mismatches = file_extracted
+            print(f"  File    : extracted {len(file_attrs)} attrs (locked, will not be overridden)")
+        if metrics:
+            metrics.record_llm_call("extract")
+
+    # STEP 3c — Regex pre-extraction (from web content)
     pre_extracted: dict[str, str] = {}
     tables = getattr(result, "tables", None)
     if result.content:
@@ -186,13 +223,15 @@ async def process_part(
             if metrics:
                 metrics.record_regex(len(pre_extracted))
 
-    # STEP 4 — Extract attributes
-    attributes = {}
+    # STEP 4 — Extract attributes from web/API (gap-filling only if file_attrs exist)
+    attributes: dict[str, str] = {}
+    lov_mismatches: dict[str, str] = {}
     source_url = ""
+    regex_agreement = None
 
     if result.attributes and len(result.attributes) >= 3:
         # Structured API data — normalize and skip LLM extraction
-        attributes = normalize_attrs(result.attributes, part_class)
+        attributes, lov_mismatches = normalize_attrs_with_lov_status(result.attributes, part_class)
         source_url = result.source_url
         print(f"  Source   : {result.source_name}")
     elif result.content:
@@ -201,7 +240,8 @@ async def process_part(
         if llm_cache:
             cached_attrs = llm_cache.get_extraction(mfg_part_num, part_class, result.content)
         if cached_attrs:
-            attributes = cached_attrs
+            # Cached attrs are already normalized; re-run LOV check for mismatches
+            attributes, lov_mismatches = normalize_attrs_with_lov_status(cached_attrs, part_class)
             source_url = result.source_url
             print(f"  Attrs   : {len(attributes)} (cached)")
             if metrics:
@@ -216,12 +256,12 @@ async def process_part(
                 ),
                 "Extract"
             )
-            attributes = extracted or {}
+            if extracted:
+                attributes, lov_mismatches = extracted
             source_url = result.source_url
             if metrics:
                 metrics.record_llm_call("extract")
             # Log regex/LLM agreement
-            regex_agreement = None
             if pre_extracted and attributes:
                 regex_agreement = compute_agreement(pre_extracted, attributes)
                 if metrics:
@@ -233,32 +273,51 @@ async def process_part(
         # Secondary fallback: web extraction returned empty but Part Name has dimensions
         if not attributes and part_name and len(part_name) > 10:
             print(f"  Falling back to part name extraction...")
-            name_attrs = await _retry_llm(
+            name_extracted = await _retry_llm(
                 lambda: attr_extractor.extract_from_part_name(
                     part_name, part_class, mfg_part_num, unit_of_measure
                 ),
                 "ExtractFromName"
             )
-            if name_attrs:
-                attributes = name_attrs
+            if name_extracted:
+                attributes, lov_mismatches = name_extracted
                 source_url = "part name (fallback)"
-                print(f"  Part name extracted {len(name_attrs)} attrs")
+                print(f"  Part name extracted {len(attributes)} attrs")
             if metrics:
                 metrics.record_llm_call("extract")
     else:
         # Fallback: mine dimensions from the part name / mfg info
         print(f"  Content : not found - falling back to part name")
         source_url = "part name"
-        extracted = await _retry_llm(
+        name_extracted = await _retry_llm(
             lambda: attr_extractor.extract_from_part_name(
                 part_name or f"{mfg_name} {mfg_part_num}",
                 part_class, mfg_part_num, unit_of_measure
             ),
             "ExtractFromName"
         )
-        attributes = extracted or {}
+        if name_extracted:
+            attributes, lov_mismatches = name_extracted
         if metrics:
             metrics.record_llm_call("extract")
+
+    # STEP 4b — Merge: file_attrs ALWAYS WIN over web/API attributes
+    # (file is the authoritative source, web only fills gaps)
+    if file_attrs:
+        merged: dict[str, str] = {}
+        merged.update(attributes)       # Start with web/API attrs
+        merged.update(file_attrs)       # File attrs overwrite (winning)
+        attributes = merged
+
+        # Merge LOV mismatches similarly (file mismatches win)
+        merged_mismatches: dict[str, str] = {}
+        merged_mismatches.update(lov_mismatches)
+        merged_mismatches.update(file_lov_mismatches)
+        lov_mismatches = merged_mismatches
+
+        # If file extraction provided most of the data, prefer file as source
+        if len(file_attrs) >= len(attributes) * 0.5:
+            source_url = file_result.source_url if file_result else source_url
 
     if attributes:
         print(f"  Attrs ({len(attributes)}):")
@@ -284,28 +343,38 @@ async def process_part(
         compute_classification_confidence, get_source_type,
         compute_lov_compliance, get_validation_action,
     )
+
+    # If file extraction was used, prefer file source for metrics
+    if file_attrs and file_result:
+        effective_source_name = file_result.source_name
+        effective_content = file_result.content
+    else:
+        effective_source_name = getattr(result, "source_name", "")
+        effective_content = result.content
+
     mfg_pn_in_content = bool(
-        result.content and mfg_part_num and mfg_part_num.lower() in result.content.lower()
+        effective_content and mfg_part_num
+        and mfg_part_num.lower() in effective_content.lower()
     )
-    _regex_agr = regex_agreement if "regex_agreement" in dir() else None
 
     return {
-        "part":         part,
-        "part_class":   part_class,
-        "tc_class_id":  get_tc_class_id(part_class),
-        "in_json":      in_json,
-        "attributes":   attributes,
-        "source_url":   source_url or "",
+        "part":            part,
+        "part_class":      part_class,
+        "tc_class_id":     get_tc_class_id(part_class),
+        "in_json":         in_json,
+        "attributes":      attributes,
+        "lov_mismatches":  lov_mismatches,
+        "source_url":      source_url or "",
         # Quality metrics
         "extraction_coverage": compute_extraction_coverage(attributes, part_class),
         "source_reliability": compute_source_reliability(
-            getattr(result, "source_name", ""), mfg_pn_in_content,
-            attributes, part_class, _regex_agr,
+            effective_source_name, mfg_pn_in_content,
+            attributes, part_class, regex_agreement,
         ),
         "classification_confidence": compute_classification_confidence(
             classify_source, validation_reason, in_json,
         ),
-        "source_type": get_source_type(getattr(result, "source_name", "")),
+        "source_type": get_source_type(effective_source_name),
         "lov_compliance": compute_lov_compliance(attributes),
         "validation_action": get_validation_action(validation_reason),
     }
