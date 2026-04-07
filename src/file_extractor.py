@@ -12,13 +12,12 @@ PDF strategy (cascading):
   2. If empty/sparse (< 100 chars) -> assume scanned PDF
   3. Render pages with PyMuPDF (fitz) and send to vision LLM
 
-Image strategy: send directly to vision LLM (Anthropic or OpenAI).
+Image strategy: send directly to vision LLM via LLMClient.chat_vision().
 
 File-extracted attributes are AUTHORITATIVE — they must not be overridden
 by web/API extraction. main.py merges file_attrs LAST so they win.
 """
 
-import base64
 from pathlib import Path
 
 from src.api_sources import SourceResult
@@ -186,38 +185,25 @@ async def _extract_image(path: Path, llm) -> SourceResult | None:
 
 # ── Shared vision LLM helper ─────────────────────────────────────────────────
 
+_VISION_PROMPT = (
+    "Extract ALL text and technical specifications from this image. "
+    "Include any tables, dimensions, materials, standards, part numbers, "
+    "tolerances, classifications. Preserve table structure with pipe (|) "
+    "separators if applicable. Return as plain text only — no markdown."
+)
+
+
 async def _vision_extract_image_bytes(data: bytes, media_type: str, llm) -> str:
     """Send raw image bytes to a vision LLM and return extracted text.
 
-    Auto-detects Anthropic vs OpenAI message format from llm._is_anthropic.
-    Both providers support multimodal content via the same chat() interface.
+    Provider-agnostic — delegates to LLMClient.chat_vision() which handles
+    Anthropic vs OpenAI message format internally.
     """
-    b64 = base64.standard_b64encode(data).decode("ascii")
-    prompt = (
-        "Extract ALL text and technical specifications from this image. "
-        "Include any tables, dimensions, materials, standards, part numbers, "
-        "tolerances, classifications. Preserve table structure with pipe (|) "
-        "separators if applicable. Return as plain text only — no markdown."
-    )
-
-    if getattr(llm, "_is_anthropic", False):
-        # Anthropic format
-        content = [
-            {"type": "image", "source": {"type": "base64",
-                                         "media_type": media_type, "data": b64}},
-            {"type": "text", "text": prompt},
-        ]
-    else:
-        # OpenAI format
-        content = [
-            {"type": "text", "text": prompt},
-            {"type": "image_url",
-             "image_url": {"url": f"data:{media_type};base64,{b64}"}},
-        ]
-
     try:
-        return await llm.chat(
-            messages=[{"role": "user", "content": content}],
+        return await llm.chat_vision(
+            prompt=_VISION_PROMPT,
+            image_bytes=data,
+            media_type=media_type,
             max_tokens=2000,
             temperature=0,
         )

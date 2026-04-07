@@ -1,7 +1,7 @@
 """Extract structured dimensions from raw product content using an LLM."""
 
 from src.llm_client import LLMClient
-from src.attr_schema import get_schema, normalize_attrs, normalize_attrs_with_lov_status
+from src.attr_schema import get_schema, normalize_attrs_with_lov_status
 import json
 import re
 
@@ -204,11 +204,17 @@ class AttributeExtractor:
                     truncated, part_class, mfg_part_num, unit_short, convert_note, missing
                 )
                 if retry_attrs:
-                    # Re-normalize the merged dict to track new LOV mismatches
-                    merged = {**attrs, **retry_attrs}
-                    attrs, lov_mismatches = _clean_result(
-                        merged, part_class, part_name=part_name
+                    # Clean only the new retry results (existing attrs already clean),
+                    # then merge into attrs and lov_mismatches
+                    new_attrs, new_mismatches = _clean_result(
+                        retry_attrs, part_class, part_name=part_name
                     )
+                    attrs.update(new_attrs)
+                    lov_mismatches.update(new_mismatches)
+                    # Drop mismatches for attrs that the retry filled with a valid value
+                    for k in new_attrs:
+                        if k not in new_mismatches and k in lov_mismatches:
+                            del lov_mismatches[k]
 
         return attrs, lov_mismatches
 

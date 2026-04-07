@@ -44,6 +44,9 @@ def parse_range(value: str) -> tuple[float, float, str] | None:
     """Parse a range string. Returns (low, high, unit) or None if not a range."""
     if not value or not isinstance(value, str):
         return None
+    # Fast-path: skip the regex if the value contains no range separator
+    if "to" not in value and "-" not in value and "\u2013" not in value and "\u2014" not in value:
+        return None
     m = _RANGE_RE.match(value.strip())
     if not m:
         return None

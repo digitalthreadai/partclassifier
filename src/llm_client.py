@@ -435,6 +435,42 @@ class LLMClient:
             self.total_completion_tokens += getattr(response.usage, "output_tokens", 0)
         return response.content[0].text.strip()
 
+    async def chat_vision(self, prompt: str, image_bytes: bytes, media_type: str,
+                          max_tokens: int = 2000, temperature: float | None = 0) -> str:
+        """Send a single image + text prompt to a vision-capable LLM.
+
+        Builds the correct multimodal content block for Anthropic vs OpenAI
+        formats internally — callers don't need to know which provider is in use.
+
+        Args:
+            prompt: Text instructions for the model.
+            image_bytes: Raw image bytes (PNG, JPEG, etc.)
+            media_type: MIME type, e.g. "image/png", "image/jpeg".
+            max_tokens: Max response tokens.
+            temperature: Sampling temperature (0 = deterministic).
+        """
+        import base64
+        b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+
+        if self._is_anthropic:
+            content = [
+                {"type": "image", "source": {"type": "base64",
+                                             "media_type": media_type, "data": b64}},
+                {"type": "text", "text": prompt},
+            ]
+        else:
+            content = [
+                {"type": "text", "text": prompt},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:{media_type};base64,{b64}"}},
+            ]
+
+        return await self.chat(
+            messages=[{"role": "user", "content": content}],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
     @property
     def token_usage(self) -> dict:
         """Return accumulated token usage stats."""

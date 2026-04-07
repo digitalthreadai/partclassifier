@@ -243,6 +243,10 @@ def _normalize_to_lov(value: str, lov_values: list[str]) -> str:
 def _fuzzy_match_lov(value: str, lov_values: list[str]) -> tuple[str | None, bool]:
     """Try to match `value` to a LOV entry using cascading fuzzy strategies.
 
+    Single-pass over lov_values: each LOV entry is tested against all 3
+    strategies in priority order. Exact matches return immediately; substring
+    and word-overlap matches are kept as fallbacks.
+
     Returns:
         (matched_lov_entry, True)  if a match was found
         (None, False)              if no LOV entry matched
@@ -250,7 +254,7 @@ def _fuzzy_match_lov(value: str, lov_values: list[str]) -> tuple[str | None, boo
     Strategies (in order of strictness):
         1. Exact normalized equality (strips spaces/hyphens/underscores)
         2. Substring containment ("303 stainless steel" -> "stainlesssteel")
-        3. Word-overlap (all LOV words appear in value, e.g., "Stainless Steel 313" -> "StainlessSteel")
+        3. Word-overlap (all LOV words appear in value)
     """
     if not value or not lov_values:
         return (None, False)
@@ -259,44 +263,38 @@ def _fuzzy_match_lov(value: str, lov_values: list[str]) -> tuple[str | None, boo
     if not norm_val:
         return (None, False)
 
-    # Strategy 1: exact normalized equality
-    for lov_entry in lov_values:
-        if _normalize_key(lov_entry) == norm_val:
-            return (lov_entry, True)
+    val_words = set(re.findall(r"[a-z0-9]+", value.lower()))
+    substring_match: str | None = None
+    word_overlap_match: str | None = None
+    word_overlap_score: int = 0
 
-    # Strategy 2: substring containment (LOV inside value, or value inside LOV)
     for lov_entry in lov_values:
         norm_lov = _normalize_key(lov_entry)
         if not norm_lov:
             continue
-        if norm_lov in norm_val or norm_val in norm_lov:
+
+        # Strategy 1: exact normalized equality (return immediately)
+        if norm_lov == norm_val:
             return (lov_entry, True)
 
-    # Strategy 3: word-overlap — split LOV by camelCase/spaces/underscores
-    # and check if all LOV "words" appear in the value
-    val_lower = value.lower()
-    val_words = set(re.findall(r"[a-z0-9]+", val_lower))
-    if not val_words:
-        return (None, False)
+        # Strategy 2: substring containment
+        if substring_match is None and (norm_lov in norm_val or norm_val in norm_lov):
+            substring_match = lov_entry
 
-    best_match = None
-    best_score = 0
-    for lov_entry in lov_values:
-        # Split CamelCase: "StainlessSteel" -> ["stainless", "steel"]
-        # Also split on spaces, hyphens, underscores
-        lov_words = re.findall(r"[A-Z]?[a-z0-9]+", lov_entry)
-        lov_words = [w.lower() for w in lov_words if len(w) >= 2]
-        if not lov_words:
-            continue
-        # All LOV words must be present in value
-        overlap = sum(1 for w in lov_words if w in val_words)
-        if overlap == len(lov_words) and overlap > best_score:
-            best_score = overlap
-            best_match = lov_entry
+        # Strategy 3: word-overlap (split CamelCase + delimiters)
+        if val_words:
+            lov_words = [w.lower() for w in re.findall(r"[A-Z]?[a-z0-9]+", lov_entry) if len(w) >= 2]
+            if lov_words:
+                overlap = sum(1 for w in lov_words if w in val_words)
+                if overlap == len(lov_words) and overlap > word_overlap_score:
+                    word_overlap_score = overlap
+                    word_overlap_match = lov_entry
 
-    if best_match:
-        return (best_match, True)
-
+    # Strategy 2 wins over Strategy 3 (more specific)
+    if substring_match is not None:
+        return (substring_match, True)
+    if word_overlap_match is not None:
+        return (word_overlap_match, True)
     return (None, False)
 
 

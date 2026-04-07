@@ -204,8 +204,9 @@ class ExcelHandler:
                 if k not in seen_mm:
                     lov_mismatch_attrs.append(k)
                     seen_mm.add(k)
-        # Use canonical TC order if attrs are in schema; else preserve insertion order
-        lov_mismatch_attrs.sort(key=lambda k: tc_attrs.index(k) if k in tc_attr_set else 9999)
+        # Sort by TC schema position (O(1) per lookup); non-schema attrs go last
+        tc_index = {name: i for i, name in enumerate(tc_attrs)}
+        lov_mismatch_attrs.sort(key=lambda k: tc_index.get(k, 10**9))
         lov_mismatch_cols = [f"{k}-NotPresentInLOV" for k in lov_mismatch_attrs]
 
         # Build full column list: input + prefix + metrics + TC attrs + LOV-mismatch + agent attrs

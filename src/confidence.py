@@ -6,7 +6,7 @@ Metrics are computed from data already available in the pipeline.
 """
 
 import re
-from src.attr_schema import ALIASES, LOV_MAP, get_schema, _normalize_to_lov, _normalize_key
+from src.attr_schema import ALIASES, LOV_MAP, get_schema
 
 
 # ── Column 1: Attributes Extraction Coverage % ──────────────────────────────
@@ -188,30 +188,25 @@ def get_source_type(source_name: str) -> str:
 
 # ── Column 5: LOV Compliance % ─────────────────────────────────────────────
 
-def compute_lov_compliance(attributes: dict) -> float:
+def compute_lov_compliance(attributes: dict, lov_mismatches: dict | None = None) -> float:
     """Percentage of LOV-governed attributes whose values match a valid LOV entry.
 
-    Returns 0-100. If no LOV-governed attributes were extracted, returns 100 (nothing to violate).
-    """
-    lov_total = 0
-    lov_compliant = 0
+    Uses lov_mismatches (from normalize_attrs_with_lov_status) as the source of
+    truth — guarantees agreement with the LOV-mismatch flag columns in Excel.
 
-    for k, v in attributes.items():
-        # Check if this attribute has LOV defined
-        canonical = ALIASES.get(k.strip().lower(), k.strip())
-        if canonical in LOV_MAP and v:
-            lov_total += 1
-            # Check if value matches any LOV entry (using same fuzzy logic as normalize_attrs)
-            normalized = _normalize_to_lov(str(v).strip(), LOV_MAP[canonical])
-            # If _normalize_to_lov returned a LOV entry (different from input), it matched
-            # If it returned the original value unchanged AND the original isn't in LOV, it didn't match
-            original = str(v).strip()
-            if normalized != original or _normalize_key(original) in {_normalize_key(e) for e in LOV_MAP[canonical]}:
-                lov_compliant += 1
+    Returns 0-100. If no LOV-governed attributes were extracted, returns 100.
+    """
+    # Count LOV-governed attributes that were actually extracted
+    lov_total = sum(
+        1 for k in attributes
+        if ALIASES.get(k.strip().lower(), k.strip()) in LOV_MAP and attributes[k]
+    )
 
     if lov_total == 0:
         return 100.0  # nothing to violate
 
+    n_mismatches = len(lov_mismatches) if lov_mismatches else 0
+    lov_compliant = lov_total - n_mismatches
     return round(lov_compliant / lov_total * 100, 1)
 
 
