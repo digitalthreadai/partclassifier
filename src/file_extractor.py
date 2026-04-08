@@ -1,9 +1,16 @@
 """
 File-based spec extraction (Tier 0 — runs BEFORE web/API search).
 
-Looks for spec files in the /specs/ folder matching:
-  1. <PartNumber>-<MfgPN>.<ext>   (preferred)
-  2. <MfgPN>.<ext>                (fallback)
+Looks for spec files in the /specs/ folder. Filename matching is substring-based
+(case-insensitive) so the PN/MfgPN can appear anywhere in the filename:
+
+  Priority 1 — both PN and MfgPN appear in the filename stem
+  Priority 2 — only PN appears in the filename stem
+  Priority 3 — only MfgPN appears in the filename stem
+
+Examples that all match PN="12345" MfgPN="ABC-100":
+  12345-ABC-100.pdf, ABC-100_datasheet.pdf, SPEC_12345_REV2.pdf,
+  some_12345_ABC-100_v3.pdf
 
 Supported extensions: .pdf, .png, .jpg, .jpeg, .webp
 
@@ -38,37 +45,50 @@ _MAX_VISION_PAGES = 5
 # ── File discovery ───────────────────────────────────────────────────────────
 
 def find_spec_file(part_number: str, mfg_part_num: str) -> Path | None:
-    """Locate a spec file in /specs/ matching <PN>-<MfgPN>.<ext> or <MfgPN>.<ext>.
+    """Locate a spec file in /specs/ by substring-matching the filename stem.
 
-    Case-insensitive across all supported extensions. Returns None if /specs/
-    folder doesn't exist or no match is found.
+    Matching priority (all case-insensitive):
+      1. Both PN and MfgPN appear anywhere in the stem
+      2. Only PN appears anywhere in the stem
+      3. Only MfgPN appears anywhere in the stem
+
+    Returns the first match at the highest priority, or None if nothing found.
+    Returns None if /specs/ folder doesn't exist or both PN and MfgPN are empty.
     """
     if not _SPECS_DIR.exists() or not _SPECS_DIR.is_dir():
         return None
 
-    pn = (part_number or "").strip()
-    mfg = (mfg_part_num or "").strip()
-    if not mfg:
+    pn = (part_number or "").strip().lower()
+    mfg = (mfg_part_num or "").strip().lower()
+    if not pn and not mfg:
         return None
 
-    # Build case-insensitive index of files in /specs/
-    all_files: dict[str, Path] = {}
+    # Collect all valid spec files with their lowercased stems
+    candidates: list[tuple[Path, str]] = []
     for f in _SPECS_DIR.iterdir():
         if f.is_file() and f.suffix.lower() in _ALL_EXTS:
-            all_files[f.name.lower()] = f
+            candidates.append((f, f.stem.lower()))
 
-    # Try preferred name first, then fallback
-    candidates = []
+    # Priority 1: both PN and MfgPN appear in the stem
+    if pn and mfg:
+        for f, stem in candidates:
+            if pn in stem and mfg in stem:
+                print(f"    [File] Matched by PN+MfgPN: {f.name}")
+                return f
+
+    # Priority 2: only PN appears in the stem
     if pn:
-        candidates.append(f"{pn}-{mfg}")
-    candidates.append(mfg)
+        for f, stem in candidates:
+            if pn in stem:
+                print(f"    [File] Matched by PN: {f.name}")
+                return f
 
-    for stem in candidates:
-        stem_lower = stem.lower()
-        for ext in _ALL_EXTS:
-            key = f"{stem_lower}{ext}"
-            if key in all_files:
-                return all_files[key]
+    # Priority 3: only MfgPN appears in the stem
+    if mfg:
+        for f, stem in candidates:
+            if mfg in stem:
+                print(f"    [File] Matched by MfgPN: {f.name}")
+                return f
 
     return None
 
