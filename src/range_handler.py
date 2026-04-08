@@ -27,6 +27,112 @@ _RANGE_RE = re.compile(
 _NUMERIC_TYPES = {"float", "double", "int", "integer", "number", "numeric", "real"}
 _STRING_TYPES = {"string", "text", "char", "varchar", "str"}
 
+# ── Fraction → decimal ───────────────────────────────────────────────────────
+# Mixed number: "1-1/2" or "2 3/4". Whole separated from fraction by space or hyphen.
+# Guard: not preceded by digit/decimal (avoid catching "1.5-1/2").
+_MIXED_FRAC_RE = re.compile(r"(?<![\d.])(\d+)[\s-](\d+)\s*/\s*(\d+)(?!\s*/\s*\d)")
+
+# Plain fraction: "13/64", "1/4". Guard against dates ("1/1/2024") and version
+# strings by requiring no digit/decimal before and no extra "/digit" after.
+_PLAIN_FRAC_RE = re.compile(r"(?<![\d./])(\d+)\s*/\s*(\d+)(?!\s*/?\s*\d)")
+
+
+def _fmt_decimal(val: float) -> str:
+    """3-decimal-place format with trailing zeros stripped."""
+    s = f"{val:.3f}".rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def fraction_to_decimal(value: str) -> str:
+    """Replace plain and mixed fractions in `value` with decimal equivalents.
+
+    "13/64\""        -> "0.203\""
+    "1/4 in"         -> "0.25 in"
+    "1-1/2\""        -> "1.5\""
+    "2 3/4\""        -> "2.75\""
+    "1/2 to 3/4 in"  -> "0.5 to 0.75 in"
+    "3.8 to 4.2 mm"  -> unchanged
+    "1/1/2024"       -> unchanged (date guard)
+    """
+    if not value or "/" not in value:
+        return value
+
+    # Mixed numbers first ("1-1/2" → "1.5"), so the fraction half isn't double-matched.
+    def _mixed_sub(m: re.Match) -> str:
+        whole = int(m.group(1))
+        num = int(m.group(2))
+        denom = int(m.group(3))
+        if denom == 0:
+            return m.group(0)
+        return _fmt_decimal(whole + num / denom)
+
+    out = _MIXED_FRAC_RE.sub(_mixed_sub, value)
+
+    def _plain_sub(m: re.Match) -> str:
+        num = int(m.group(1))
+        denom = int(m.group(2))
+        if denom == 0:
+            return m.group(0)
+        return _fmt_decimal(num / denom)
+
+    out = _PLAIN_FRAC_RE.sub(_plain_sub, out)
+    return out
+
+
+# ── Unit suffix stripping ────────────────────────────────────────────────────
+# UOM is captured in a separate Excel column, so attribute *values* should not
+# repeat the unit. We strip only when the value is unambiguously "<number><unit>".
+
+# Trailing unit token at end of value: 21.2 mm  /  0.5 in  /  0.203"  /  4.2 MM
+_TRAILING_UNIT_RE = re.compile(
+    r"^\s*([+-]?\d+\.?\d*)\s*"
+    r"(?:mm|millimeters?|in|inch|inches|\"|\u2032|\u2033)\s*$",
+    re.IGNORECASE,
+)
+
+# Range with units: "0.5 to 0.75 in" / "3.8 mm to 4.2 mm" / "0.5\" to 0.75\""
+_RANGE_UNIT_RE = re.compile(
+    r"^\s*([+-]?\d+\.?\d*)\s*(?:mm|millimeters?|in|inch|inches|\"|\u2032|\u2033)?\s*"
+    r"(to|-|\u2013|\u2014)\s*"
+    r"([+-]?\d+\.?\d*)\s*(?:mm|millimeters?|in|inch|inches|\"|\u2032|\u2033)\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_unit_suffix(value: str, datatype: str | None = None) -> str:
+    """Strip trailing length-unit tokens from numeric values.
+
+    Examples:
+      "21.2 mm"        -> "21.2"
+      '0.203"'         -> "0.203"
+      "0.5 in"         -> "0.5"
+      "3.8 to 4.2 mm"  -> "3.8 to 4.2"
+      "Stainless Steel"-> unchanged
+      "M20"            -> unchanged (no leading numeric/unit pair)
+      "Rockwell C34"   -> unchanged
+
+    Strips for explicit numeric datatypes always; for unknown datatype only
+    when the value matches "<num><unit>" or "<num><unit?> to <num><unit>"
+    cleanly. Never strips for explicit string datatypes.
+    """
+    if not value or not isinstance(value, str):
+        return value
+    is_num = is_numeric_datatype(datatype)
+    if is_num is False:
+        return value
+
+    m = _TRAILING_UNIT_RE.match(value)
+    if m:
+        return m.group(1)
+
+    m = _RANGE_UNIT_RE.match(value)
+    if m:
+        sep = m.group(2)
+        # Normalize the separator with single spaces
+        return f"{m.group(1)} {sep} {m.group(3)}"
+
+    return value
+
 
 def is_numeric_datatype(datatype: str | None) -> bool | None:
     """Returns True if numeric, False if string, None if unknown/missing."""

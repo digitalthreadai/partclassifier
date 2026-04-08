@@ -105,11 +105,25 @@ async def process_part(
     unit_of_measure = str(part.get("Unit of Measure")          or "").strip().lower()
     part_number     = str(part.get("Part Number")              or "").strip()
 
+    # Infer UOM from part name if input did not specify one
+    uom_inferred = False
+    if not unit_of_measure and part_name:
+        from src.part_name_parser import infer_uom_from_part_name
+        inferred = infer_uom_from_part_name(part_name)
+        if inferred:
+            unit_of_measure = inferred
+            uom_inferred = True
+
     print(f"\n{'-'*60}")
     print(f"  Part #  : {mfg_part_num}")
     print(f"  Name    : {part_name}")
     print(f"  Maker   : {mfg_name}")
-    print(f"  Unit    : {unit_of_measure}")
+    if uom_inferred:
+        print(f"  Unit    : {unit_of_measure}  (inferred from part name)")
+    elif unit_of_measure:
+        print(f"  Unit    : {unit_of_measure}")
+    else:
+        print(f"  Unit    : (none — could not infer)")
 
     # STEP 0 — File Content Search (Tier 0, runs BEFORE web/API)
     # File-extracted attributes are AUTHORITATIVE — they cannot be overridden by web.
@@ -117,6 +131,7 @@ async def process_part(
     file_attrs: dict[str, str] = {}
     file_lov_mismatches: dict[str, str] = {}
     file_range_originals: dict[str, str] = {}
+    file_fraction_originals: dict[str, str] = {}
     spec_file = find_spec_file(part_number, mfg_part_num)
     if spec_file:
         print(f"  Spec file: {spec_file.name}")
@@ -125,6 +140,24 @@ async def process_part(
     # STEP 1 — Search the web (always — file content + web are merged later)
     print(f"  Searching: {mfg_name} {mfg_part_num} ...")
     result = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
+
+    # STEP 1b — Validate web page against Part Name dimensional signals.
+    # Part names are ground truth from the user's data; if zero of those values
+    # appear on the scraped page, the page is wrong → evict cache and re-search once.
+    from src.part_name_parser import parse_part_name_signals, validate_web_content
+    pn_signals = parse_part_name_signals(part_name) if part_name else {}
+    if pn_signals.get("dimensions") and result.content:
+        if not validate_web_content(pn_signals, result.content):
+            print(f"  Web page REJECTED — Part Name values absent from content. Re-searching...")
+            if mfg_part_num in scraper._cache:
+                del scraper._cache[mfg_part_num]
+                save_cache(scraper._cache, _CACHE_PATH)
+            retry_result = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
+            if retry_result.content and validate_web_content(pn_signals, retry_result.content):
+                result = retry_result
+                print(f"  Re-search succeeded: {(retry_result.source_url or '')[:70]}")
+            else:
+                print(f"  Re-search also failed validation — proceeding with original result")
 
     # STEP 2 — Classify
     # Priority: Part Name > Spec File > Web (each tier only runs if previous failed)
@@ -266,7 +299,7 @@ async def process_part(
                 "ExtractFromFile"
             )
             if file_extracted:
-                file_attrs, file_lov_mismatches, file_range_originals = file_extracted
+                file_attrs, file_lov_mismatches, file_range_originals, file_fraction_originals = file_extracted
                 print(f"  File    : extracted {len(file_attrs)} attrs (locked, will not be overridden)")
             if metrics:
                 metrics.record_llm_call("extract")
@@ -287,12 +320,13 @@ async def process_part(
     attributes: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
     range_originals: dict[str, str] = {}
+    fraction_originals: dict[str, str] = {}
     source_url = ""
     regex_agreement = None
 
     if result.attributes and len(result.attributes) >= 3:
         # Structured API data — normalize and skip LLM extraction
-        attributes, lov_mismatches, range_originals = normalize_attrs_with_lov_status(result.attributes, part_class)
+        attributes, lov_mismatches, range_originals, fraction_originals = normalize_attrs_with_lov_status(result.attributes, part_class)
         source_url = result.source_url
         print(f"  Source   : {result.source_name}")
     elif result.content:
@@ -302,7 +336,7 @@ async def process_part(
             cached_attrs = llm_cache.get_extraction(mfg_part_num, part_class, result.content)
         if cached_attrs:
             # Cached attrs are already normalized; re-run LOV check for mismatches
-            attributes, lov_mismatches, range_originals = normalize_attrs_with_lov_status(cached_attrs, part_class)
+            attributes, lov_mismatches, range_originals, fraction_originals = normalize_attrs_with_lov_status(cached_attrs, part_class)
             source_url = result.source_url
             print(f"  Attrs   : {len(attributes)} (cached)")
             if metrics:
@@ -319,7 +353,7 @@ async def process_part(
                     "Extract"
                 )
                 if extracted:
-                    attributes, lov_mismatches, range_originals = extracted
+                    attributes, lov_mismatches, range_originals, fraction_originals = extracted
             except Exception as e:
                 print(f"  Extract : error (continuing with empty attrs): {e}")
             source_url = result.source_url
@@ -344,7 +378,7 @@ async def process_part(
                 "ExtractFromName"
             )
             if name_extracted:
-                attributes, lov_mismatches, range_originals = name_extracted
+                attributes, lov_mismatches, range_originals, fraction_originals = name_extracted
                 source_url = "part name (fallback)"
                 print(f"  Part name extracted {len(attributes)} attrs")
             if metrics:
@@ -361,7 +395,7 @@ async def process_part(
             "ExtractFromName"
         )
         if name_extracted:
-            attributes, lov_mismatches, range_originals = name_extracted
+            attributes, lov_mismatches, range_originals, fraction_originals = name_extracted
         if metrics:
             metrics.record_llm_call("extract")
 
@@ -384,6 +418,12 @@ async def process_part(
         merged_ranges.update(range_originals)
         merged_ranges.update(file_range_originals)
         range_originals = merged_ranges
+
+        # Merge fraction originals (file wins)
+        merged_fractions: dict[str, str] = {}
+        merged_fractions.update(fraction_originals)
+        merged_fractions.update(file_fraction_originals)
+        fraction_originals = merged_fractions
 
         # If file extraction provided most of the data, prefer file as source
         if len(file_attrs) >= len(attributes) * 0.5:
@@ -450,6 +490,7 @@ async def process_part(
         "attributes":      attributes,
         "lov_mismatches":  lov_mismatches,
         "range_originals": range_originals,
+        "fraction_originals": fraction_originals,
         "source_url":      source_url or "",
         # Quality metrics
         "extraction_coverage": compute_extraction_coverage(attributes, part_class),

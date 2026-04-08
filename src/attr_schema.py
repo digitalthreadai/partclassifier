@@ -455,7 +455,7 @@ def normalize_attrs_with_lov_status(
         range_originals: dict[canonical_name, original_range] - TC schema attrs
                          whose range value was averaged (original preserved here)
     """
-    from src.range_handler import average_range
+    from src.range_handler import average_range, fraction_to_decimal, strip_unit_suffix
 
     schema = get_schema(part_class)
     schema_set = set(schema)
@@ -478,6 +478,7 @@ def normalize_attrs_with_lov_status(
     normalized: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
     range_originals: dict[str, str] = {}
+    fraction_originals: dict[str, str] = {}
 
     for k, v in raw.items():
         k_lower = k.strip().lower()
@@ -503,11 +504,20 @@ def normalize_attrs_with_lov_status(
                 # Record mismatch (keep original value in normalized too — per user request)
                 lov_mismatches[canonical] = str_val
 
+        # Fraction → decimal conversion (preserve original if changed for TC attrs)
+        original_before_frac = str_val
+        str_val = fraction_to_decimal(str_val)
+        if str_val != original_before_frac and canonical in schema_set:
+            fraction_originals[canonical] = original_before_frac
+
         # Range averaging (for numeric attributes) — preserve original if changed
         original_before_avg = str_val
         str_val = average_range(str_val, ATTR_DATATYPES.get(canonical))
         if str_val != original_before_avg and canonical in schema_set:
             range_originals[canonical] = original_before_avg
+
+        # Strip trailing UOM suffix — UOM lives in its own input column
+        str_val = strip_unit_suffix(str_val, ATTR_DATATYPES.get(canonical))
 
         normalized[canonical] = str_val
 
@@ -520,7 +530,7 @@ def normalize_attrs_with_lov_status(
         if key not in ordered:
             ordered[key] = val
 
-    return ordered, lov_mismatches, range_originals
+    return ordered, lov_mismatches, range_originals, fraction_originals
 
 
 def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
@@ -528,5 +538,5 @@ def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
 
     Returns only the normalized dict (without LOV mismatch tracking).
     """
-    ordered, _, _ = normalize_attrs_with_lov_status(raw, part_class)
+    ordered, _, _, _ = normalize_attrs_with_lov_status(raw, part_class)
     return ordered

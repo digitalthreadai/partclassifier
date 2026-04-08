@@ -85,10 +85,10 @@ def _single_value(value: str, part_name: str) -> str:
     return parts[0].strip()
 
 
-def _clean_result(result: dict, part_class: str, part_name: str = "") -> tuple[dict, dict]:
-    """Remove junk keys, enforce single values, normalize, and track LOV mismatches.
+def _clean_result(result: dict, part_class: str, part_name: str = "") -> tuple[dict, dict, dict, dict]:
+    """Remove junk keys, enforce single values, normalize, and track transformations.
 
-    Returns (normalized_attrs, lov_mismatches).
+    Returns (normalized_attrs, lov_mismatches, range_originals, fraction_originals).
     """
     skip_keys = {"part number", "part name", "part no", "part #", "_source_url",
                   "description", "features", "overview", "product name", "category",
@@ -104,7 +104,7 @@ def _clean_result(result: dict, part_class: str, part_name: str = "") -> tuple[d
         if part_name:
             vs = _single_value(vs, part_name)
         cleaned[k] = vs
-    return normalize_attrs_with_lov_status(cleaned, part_class)  # returns 3-tuple
+    return normalize_attrs_with_lov_status(cleaned, part_class)  # returns 4-tuple
 
 
 class AttributeExtractor:
@@ -114,17 +114,11 @@ class AttributeExtractor:
     async def extract(self, raw_content: str, part_class: str, mfg_part_num: str,
                       part_name: str = "", unit_of_measure: str = "",
                       pre_extracted: dict[str, str] | None = None
-                      ) -> tuple[dict[str, str], dict[str, str]]:
-        """Parse raw page text and return (attributes, lov_mismatches).
-
-        Args:
-            pre_extracted: Optional regex-extracted values for LLM to validate/augment.
+                      ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+        """Parse raw page text and return a 4-tuple.
 
         Returns:
-            (attributes, lov_mismatches)
-            attributes: dict[canonical_name, value] - normalized attributes
-            lov_mismatches: dict[canonical_name, original_value] - LOV-governed
-                            attrs whose value did NOT match any LOV entry
+            (attributes, lov_mismatches, range_originals, fraction_originals)
         """
         truncated = raw_content[:MAX_CONTENT_CHARS]
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
@@ -191,7 +185,9 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        attrs, lov_mismatches, range_originals = _clean_result(result, part_class, part_name=part_name)
+        attrs, lov_mismatches, range_originals, fraction_originals = _clean_result(
+            result, part_class, part_name=part_name
+        )
 
         # LLM-augmented LOV resolution: semantic matching for remaining mismatches
         if lov_mismatches:
@@ -212,19 +208,20 @@ class AttributeExtractor:
                 )
                 if retry_attrs:
                     # Clean only the new retry results (existing attrs already clean),
-                    # then merge into attrs, lov_mismatches, and range_originals
-                    new_attrs, new_mismatches, new_range_originals = _clean_result(
+                    # then merge into attrs, lov_mismatches, range/fraction originals
+                    new_attrs, new_mismatches, new_range_originals, new_fraction_originals = _clean_result(
                         retry_attrs, part_class, part_name=part_name
                     )
                     attrs.update(new_attrs)
                     lov_mismatches.update(new_mismatches)
                     range_originals.update(new_range_originals)
+                    fraction_originals.update(new_fraction_originals)
                     # Drop mismatches for attrs that the retry filled with a valid value
                     for k in new_attrs:
                         if k not in new_mismatches and k in lov_mismatches:
                             del lov_mismatches[k]
 
-        return attrs, lov_mismatches, range_originals
+        return attrs, lov_mismatches, range_originals, fraction_originals
 
     async def _retry_missing(self, content: str, part_class: str, mfg_part_num: str,
                               unit_short: str, convert_note: str,
@@ -333,10 +330,10 @@ class AttributeExtractor:
 
     async def extract_from_part_name(self, part_name: str, part_class: str,
                                      mfg_part_num: str, unit_of_measure: str = ""
-                                     ) -> tuple[dict[str, str], dict[str, str]]:
+                                     ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
         """Fallback: extract any dimensions encoded in the part name itself.
 
-        Returns (attributes, lov_mismatches).
+        Returns (attributes, lov_mismatches, range_originals, fraction_originals).
         """
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
         schema_attrs = get_schema(part_class)
@@ -365,4 +362,4 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        return normalize_attrs_with_lov_status(result, part_class)  # returns 3-tuple
+        return normalize_attrs_with_lov_status(result, part_class)  # returns 4-tuple

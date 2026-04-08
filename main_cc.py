@@ -375,7 +375,7 @@ def process_part(
         try:
             result = _run_async(source.search(mfg_name, mfg_part_num, unit_of_measure))
             if result and result.attributes and len(result.attributes) >= 3:
-                attributes, lov_mismatches = normalize_attrs_with_lov_status(result.attributes, part_class)
+                attributes, lov_mismatches, _, _ = normalize_attrs_with_lov_status(result.attributes, part_class)
                 source_url = result.source_url or ""
                 safe_print(f"  [{index}/{total}] Source ({result.source_name}): {source_url}")
                 break
