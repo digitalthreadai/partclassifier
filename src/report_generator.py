@@ -219,21 +219,29 @@ function copyTableCSV(btn) {{
   const rows = [...table.querySelectorAll('tr')].map(tr =>
     [...tr.querySelectorAll('th,td')].map(c => c.innerText.replace(/\t/g, ' ')).join('\t')
   );
-  navigator.clipboard.writeText(rows.join('\n')).then(() => {{
-    const orig = btn.textContent;
+  const text = rows.join('\n');
+  const orig = btn.textContent;
+  function markCopied() {{
     btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = orig, 1500);
-  }}).catch(() => {{
-    // Fallback for browsers without clipboard API
+    btn.style.background = '#2d6b2d';
+    setTimeout(() => {{ btn.textContent = orig; btn.style.background = ''; }}, 1800);
+  }}
+  function fallback() {{
     const ta = document.createElement('textarea');
-    ta.value = rows.join('\n');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
     document.body.appendChild(ta);
+    ta.focus();
     ta.select();
-    document.execCommand('copy');
+    try {{ document.execCommand('copy'); markCopied(); }}
+    catch(e) {{ console.warn('Copy failed', e); }}
     document.body.removeChild(ta);
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy CSV', 1500);
-  }});
+  }}
+  if (navigator.clipboard && window.isSecureContext) {{
+    navigator.clipboard.writeText(text).then(markCopied).catch(fallback);
+  }} else {{
+    fallback();
+  }}
 }}
 
 // ── Sortable Tables ───────────────────────────────────────────────────────

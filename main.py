@@ -48,12 +48,17 @@ def _has_flag(flag: str) -> bool:
     return flag in sys.argv
 
 
+import os
+
 EXCEL_PATH = Path(_get_arg("--input", str(BASE_DIR / "input" / "PartClassifierInput.xlsx")))
 _ts = __import__("datetime").datetime.now().strftime("%m%d%Y%H%M")
 OUTPUT_DIR = Path(_get_arg("--output", str(BASE_DIR / f"output-{_ts}")))
 NO_CACHE = _has_flag("--no-cache")
 CLEAR_CACHE = _has_flag("--clear-cache")
 FRESH = _has_flag("--fresh")
+# Optional post-processing: deduplicate agent-extracted columns via LLM
+# Set POST_PROCESS_DEDUP=true in .env to enable
+POST_PROCESS_DEDUP = os.getenv("POST_PROCESS_DEDUP", "false").lower() in ("true", "1", "yes")
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -146,7 +151,11 @@ async def process_part(
 
     # Try LLM cache
     if not part_class and llm_cache:
-        classify_text = part_name or (result.content[:500] if result.content else f"{mfg_name} {mfg_part_num}")
+        # Prefer spec file content over web content for cache key
+        classify_text = (part_name
+                         or (file_result.content[:500] if file_result and file_result.content else "")
+                         or (result.content[:500] if result.content else "")
+                         or f"{mfg_name} {mfg_part_num}")
         cached_class = llm_cache.get_classification(classify_text)
         if cached_class:
             part_class = cached_class
@@ -159,6 +168,9 @@ async def process_part(
     if not part_class:
         if part_name:
             classify_text = part_name
+        elif file_result and file_result.content:
+            # Spec file content is more authoritative than web for classification
+            classify_text = file_result.content[:500]
         elif result.content and len(result.content) >= 200:
             classify_text = result.content[:500]
         else:
@@ -523,8 +535,9 @@ async def main() -> None:
     for path in written:
         print(f"  -> {path}")
 
-    # Generate HTML executive summary
+    # Generate HTML executive summary (pre-processing)
     from src.report_generator import generate_run_summary
+    from src.excel_handler import ExcelHandler
     metrics_dict = run_metrics.summary()
     generate_run_summary(
         results, metrics_dict, llm.token_usage,
@@ -532,6 +545,45 @@ async def main() -> None:
         input_file=EXCEL_PATH.name,
         model_name=llm.display_name(),
     )
+
+    # ── Optional post-processing: deduplicate agent-extracted columns ─────
+    if POST_PROCESS_DEDUP:
+        from src.attr_schema import get_schema
+        from src.post_processor import deduplicate_agent_columns
+
+        # Build global TC attr set across all classes in this run
+        tc_attr_set_global: set[str] = set()
+        for r in results:
+            cls = r.get("part_class", "")
+            if cls:
+                tc_attr_set_global.update(get_schema(cls))
+
+        print(f"\n[PostProc] Deduplicating agent columns across {len(results)} parts...")
+        post_results, merge_map = await deduplicate_agent_columns(
+            results, tc_attr_set_global, llm
+        )
+
+        if merge_map:
+            print(f"  Merged {len(merge_map)} agent column(s):")
+            for removed, kept in sorted(merge_map.items()):
+                print(f"    '{removed}' → '{kept}'")
+
+            # Write post-processing Excel to output/post/ subfolder
+            post_dir = OUTPUT_DIR / "post"
+            post_handler = ExcelHandler(str(EXCEL_PATH), str(post_dir))
+            post_written = post_handler.write_class_files(post_results)
+            for path in post_written:
+                print(f"  [post] -> {path}")
+
+            generate_run_summary(
+                post_results, metrics_dict, llm.token_usage,
+                post_dir / "run_summary_post.html",
+                input_file=EXCEL_PATH.name,
+                model_name=llm.display_name(),
+            )
+            print(f"  [post] -> {post_dir / 'run_summary_post.html'}")
+        else:
+            print("  [PostProc] No duplicate agent columns found — post output skipped.")
 
     print(f"Done. {completed} parts processed.")
 
