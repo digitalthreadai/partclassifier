@@ -52,6 +52,7 @@ HEADER_FILL = PatternFill("solid", fgColor="1F4E79")       # Navy — input + pr
 AGENT_HEADER_FILL = PatternFill("solid", fgColor="4A4A6A") # Gray-purple — agent-extracted attrs
 METRICS_HEADER_FILL = PatternFill("solid", fgColor="2D5F2D") # Dark green — quality metrics
 LOV_MISMATCH_HEADER_FILL = PatternFill("solid", fgColor="C04040")  # Red — LOV mismatch flag
+RANGE_ORIG_HEADER_FILL = PatternFill("solid", fgColor="2E6B8A")   # Steel blue — original range values
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
 
@@ -209,13 +210,25 @@ class ExcelHandler:
         lov_mismatch_attrs.sort(key=lambda k: tc_index.get(k, 10**9))
         lov_mismatch_cols = [f"{k}-NotPresentInLOV" for k in lov_mismatch_attrs]
 
-        # Build full column list: input + prefix + metrics + TC attrs + LOV-mismatch + agent attrs
+        # Build range-original columns: TC schema attrs where range was averaged in any row
+        range_orig_attrs: list[str] = []
+        seen_ro: set[str] = set()
+        for r in results:
+            for k in r.get("range_originals", {}).keys():
+                if k not in seen_ro and k in tc_attr_set:
+                    range_orig_attrs.append(k)
+                    seen_ro.add(k)
+        range_orig_attrs.sort(key=lambda k: tc_index.get(k, 10**9))
+        range_orig_cols = [f"{k}-Original-RANGE-Value" for k in range_orig_attrs]
+
+        # Build full column list: input + prefix + metrics + TC attrs + LOV-mismatch + range-orig + agent attrs
         all_columns = (INPUT_COLUMNS + RESULT_PREFIX_COLS + METRICS_COLS
-                       + tc_attrs + lov_mismatch_cols + agent_attrs)
+                       + tc_attrs + lov_mismatch_cols + range_orig_cols + agent_attrs)
         metrics_start = len(INPUT_COLUMNS) + len(RESULT_PREFIX_COLS)
         tc_attr_start = metrics_start + len(METRICS_COLS)
         lov_mismatch_start = tc_attr_start + len(tc_attrs)
-        agent_attr_start = lov_mismatch_start + len(lov_mismatch_cols)
+        range_orig_start = lov_mismatch_start + len(lov_mismatch_cols)
+        agent_attr_start = range_orig_start + len(range_orig_cols)
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -226,13 +239,15 @@ class ExcelHandler:
         # Write headers with color coding
         for col_idx, header in enumerate(all_columns, start=1):
             cell = ws.cell(row=1, column=col_idx, value=header)
-            # Color: metrics (green), TC attrs (navy), LOV mismatch (red), agent attrs (gray-purple)
+            # Color: metrics (green), TC attrs (navy), LOV mismatch (red), range orig (steel blue), agent attrs (gray-purple)
             if metrics_start < col_idx <= tc_attr_start:
                 cell.fill = METRICS_HEADER_FILL
             elif tc_attr_start < col_idx <= lov_mismatch_start:
                 cell.fill = HEADER_FILL  # TC attrs (navy)
-            elif lov_mismatch_start < col_idx <= agent_attr_start:
+            elif lov_mismatch_start < col_idx <= range_orig_start:
                 cell.fill = LOV_MISMATCH_HEADER_FILL  # LOV mismatch flag (red)
+            elif range_orig_start < col_idx <= agent_attr_start:
+                cell.fill = RANGE_ORIG_HEADER_FILL  # original range values (steel blue)
             elif col_idx > agent_attr_start:
                 cell.fill = AGENT_HEADER_FILL  # agent extras (gray-purple)
             else:
@@ -295,8 +310,15 @@ class ExcelHandler:
                 else:
                     ws.cell(row=row_idx, column=mm_offset + i, value="")
 
+            # Range original value columns (steel blue — original range before averaging)
+            ro_offset = mm_offset + len(lov_mismatch_cols)
+            row_range_originals = r.get("range_originals", {})
+            for i, ro_attr in enumerate(range_orig_attrs):
+                ws.cell(row=row_idx, column=ro_offset + i,
+                        value=row_range_originals.get(ro_attr, ""))
+
             # Agent attribute columns (gray-purple)
-            agent_offset = mm_offset + len(lov_mismatch_cols)
+            agent_offset = ro_offset + len(range_orig_cols)
             for i, key in enumerate(agent_attrs):
                 ws.cell(row=row_idx, column=agent_offset + i, value=attrs.get(key, ""))
 

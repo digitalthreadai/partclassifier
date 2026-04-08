@@ -35,7 +35,9 @@ def compute_extraction_coverage(attributes: dict, part_class: str) -> float:
 # ── Column 2: Source Reliability % ──────────────────────────────────────────
 
 _SOURCE_SCORES = {
-    "spec file": 100,    # Local spec is the most authoritative source
+    "spec file (text)": 100,   # Native text PDF — highest confidence
+    "spec file (vision)": 85,  # Vision OCR — slightly lower confidence
+    "spec file": 95,           # Generic spec file (method unknown)
     "api": 100,
     "stealth": 80,
     "web (cached)": 75,
@@ -51,6 +53,7 @@ def compute_source_reliability(
     attributes: dict,
     part_class: str,
     regex_agreement: dict | None = None,
+    method: str = "",
 ) -> float:
     """Weighted reliability score based on data source quality.
 
@@ -58,7 +61,7 @@ def compute_source_reliability(
     Returns 0-100.
     """
     # Source type score (40%)
-    src_type = get_source_type(source_name).lower()
+    src_type = get_source_type(source_name, method=method).lower()
     source_score = _SOURCE_SCORES.get(src_type, 50)
 
     # MFG PN in content (20%)
@@ -166,12 +169,16 @@ def _parse_validation_score(reason: str) -> float:
 
 # ── Column 4: Source Type ───────────────────────────────────────────────────
 
-def get_source_type(source_name: str) -> str:
+def get_source_type(source_name: str, method: str = "") -> str:
     """Map source_name to a clean display string."""
     if not source_name:
         return "None"
     s = source_name.lower()
     if s.startswith("file/") or "spec file" in s:
+        if method == "vision":
+            return "Spec File (Vision)"
+        if method == "native":
+            return "Spec File (Text)"
         return "Spec File"
     if "api" in s or "digikey" in s or "mouser" in s or "mcmaster" in s:
         return "API"

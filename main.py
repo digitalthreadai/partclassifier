@@ -111,6 +111,7 @@ async def process_part(
     file_result = None
     file_attrs: dict[str, str] = {}
     file_lov_mismatches: dict[str, str] = {}
+    file_range_originals: dict[str, str] = {}
     spec_file = find_spec_file(part_number, mfg_part_num)
     if spec_file:
         print(f"  Spec file: {spec_file.name}")
@@ -210,7 +211,7 @@ async def process_part(
                 "ExtractFromFile"
             )
             if file_extracted:
-                file_attrs, file_lov_mismatches = file_extracted
+                file_attrs, file_lov_mismatches, file_range_originals = file_extracted
                 print(f"  File    : extracted {len(file_attrs)} attrs (locked, will not be overridden)")
             if metrics:
                 metrics.record_llm_call("extract")
@@ -230,12 +231,13 @@ async def process_part(
     # STEP 4 — Extract attributes from web/API (gap-filling only if file_attrs exist)
     attributes: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
+    range_originals: dict[str, str] = {}
     source_url = ""
     regex_agreement = None
 
     if result.attributes and len(result.attributes) >= 3:
         # Structured API data — normalize and skip LLM extraction
-        attributes, lov_mismatches = normalize_attrs_with_lov_status(result.attributes, part_class)
+        attributes, lov_mismatches, range_originals = normalize_attrs_with_lov_status(result.attributes, part_class)
         source_url = result.source_url
         print(f"  Source   : {result.source_name}")
     elif result.content:
@@ -245,7 +247,7 @@ async def process_part(
             cached_attrs = llm_cache.get_extraction(mfg_part_num, part_class, result.content)
         if cached_attrs:
             # Cached attrs are already normalized; re-run LOV check for mismatches
-            attributes, lov_mismatches = normalize_attrs_with_lov_status(cached_attrs, part_class)
+            attributes, lov_mismatches, range_originals = normalize_attrs_with_lov_status(cached_attrs, part_class)
             source_url = result.source_url
             print(f"  Attrs   : {len(attributes)} (cached)")
             if metrics:
@@ -262,7 +264,7 @@ async def process_part(
                     "Extract"
                 )
                 if extracted:
-                    attributes, lov_mismatches = extracted
+                    attributes, lov_mismatches, range_originals = extracted
             except Exception as e:
                 print(f"  Extract : error (continuing with empty attrs): {e}")
             source_url = result.source_url
@@ -287,7 +289,7 @@ async def process_part(
                 "ExtractFromName"
             )
             if name_extracted:
-                attributes, lov_mismatches = name_extracted
+                attributes, lov_mismatches, range_originals = name_extracted
                 source_url = "part name (fallback)"
                 print(f"  Part name extracted {len(attributes)} attrs")
             if metrics:
@@ -304,7 +306,7 @@ async def process_part(
             "ExtractFromName"
         )
         if name_extracted:
-            attributes, lov_mismatches = name_extracted
+            attributes, lov_mismatches, range_originals = name_extracted
         if metrics:
             metrics.record_llm_call("extract")
 
@@ -321,6 +323,12 @@ async def process_part(
         merged_mismatches.update(lov_mismatches)
         merged_mismatches.update(file_lov_mismatches)
         lov_mismatches = merged_mismatches
+
+        # Merge range originals (file wins)
+        merged_ranges: dict[str, str] = {}
+        merged_ranges.update(range_originals)
+        merged_ranges.update(file_range_originals)
+        range_originals = merged_ranges
 
         # If file extraction provided most of the data, prefer file as source
         if len(file_attrs) >= len(attributes) * 0.5:
@@ -364,6 +372,9 @@ async def process_part(
         and mfg_part_num.lower() in effective_content.lower()
     )
 
+    file_method = getattr(file_result, "method", "") if file_result else ""
+    effective_method = file_method if file_attrs and file_result else ""
+
     return {
         "part":            part,
         "part_class":      part_class,
@@ -371,17 +382,19 @@ async def process_part(
         "in_json":         in_json,
         "attributes":      attributes,
         "lov_mismatches":  lov_mismatches,
+        "range_originals": range_originals,
         "source_url":      source_url or "",
         # Quality metrics
         "extraction_coverage": compute_extraction_coverage(attributes, part_class),
         "source_reliability": compute_source_reliability(
             effective_source_name, mfg_pn_in_content,
             attributes, part_class, regex_agreement,
+            method=effective_method,
         ),
         "classification_confidence": compute_classification_confidence(
             classify_source, validation_reason, in_json,
         ),
-        "source_type": get_source_type(effective_source_name),
+        "source_type": get_source_type(effective_source_name, method=effective_method),
         "lov_compliance": compute_lov_compliance(attributes, part_class, lov_mismatches),
         "validation_action": get_validation_action(validation_reason),
     }

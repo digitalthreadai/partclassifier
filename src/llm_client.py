@@ -223,6 +223,9 @@ class LLMClient:
         else:
             self._init_openai_compat()
 
+        # Vision support: Anthropic models and GPT-4 family support image input
+        self.supports_vision = self._is_anthropic or "gpt-4" in self.model.lower()
+
     def _init_openai_compat(self):
         """Initialize for any OpenAI-compatible provider (Groq, OpenAI, Ollama, proxies)."""
         from openai import AsyncOpenAI

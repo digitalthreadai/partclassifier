@@ -41,6 +41,22 @@ _MIN_USEFUL_TEXT = 100
 # Cap pages sent to vision LLM (avoid runaway cost on huge PDFs)
 _MAX_VISION_PAGES = 5
 
+# Quality thresholds for native text detection
+_LOW_QUALITY_THRESHOLD = 0.4   # alnum ratio below this = likely garbled/scanned
+_MIN_DISTINCT_TOKENS = 15      # fewer distinct words = likely not real text
+
+
+def _text_quality_score(text: str) -> float:
+    """Estimate extraction quality as ratio of alphanumeric chars to total non-whitespace.
+
+    Returns 0.0-1.0. Low scores indicate garbled OCR artifacts or mostly symbols.
+    """
+    stripped = text.replace(" ", "").replace("\n", "")
+    if not stripped:
+        return 0.0
+    alnum = sum(1 for c in stripped if c.isalnum())
+    return alnum / len(stripped)
+
 
 # ── File discovery ───────────────────────────────────────────────────────────
 
@@ -112,23 +128,65 @@ async def extract_from_file(file_path: Path, llm) -> SourceResult | None:
 # ── PDF extraction (cascading: native text -> vision fallback) ───────────────
 
 async def _extract_pdf_smart(path: Path, llm) -> SourceResult | None:
-    """Try native text extraction first. If empty/sparse, fall back to vision."""
-    # Step 1: pdfplumber (handles native text + tables)
-    extractor = PDFExtractor()
-    text = extractor.extract(str(path))
+    """Try native text extraction first; fall back to vision if sparse or low quality.
 
-    if text and len(text.strip()) >= _MIN_USEFUL_TEXT:
-        # Native text PDF — done
-        print(f"    [File] Extracted {len(text)} chars (native text)")
+    Safety net: never returns None if native text was obtained (even if low quality),
+    unless both native AND vision produced nothing.
+    """
+    # Step 1: pdfplumber (wrapped in try/except for corrupt PDFs)
+    native_text = ""
+    try:
+        extractor = PDFExtractor()
+        native_text = extractor.extract(str(path)) or ""
+    except Exception as e:
+        print(f"    [File] pdfplumber error: {e}")
+
+    native_ok = (
+        len(native_text.strip()) >= _MIN_USEFUL_TEXT
+        and _text_quality_score(native_text) >= _LOW_QUALITY_THRESHOLD
+        and len(set(native_text.split())) >= _MIN_DISTINCT_TOKENS
+    )
+
+    # Step 2: Good native text — use it directly
+    if native_ok:
+        print(f"    [File] Extracted {len(native_text)} chars (native text)")
         return SourceResult(
-            content=text,
+            content=native_text,
             source_url=f"file://{path.name}",
             source_name=f"file/{path.name}",
+            method="native",
         )
 
-    # Step 2: Scanned PDF — render pages and use vision
-    print(f"    [File] PDF appears to be scanned, using vision LLM...")
-    return await _extract_pdf_via_vision(path, llm)
+    # Step 3: Sparse or low-quality native text — try vision LLM if supported
+    quality = _text_quality_score(native_text) if native_text.strip() else 0.0
+    if native_text.strip():
+        print(f"    [File] Native text low quality (score={quality:.2f}, {len(native_text)} chars) — trying vision...")
+    else:
+        print(f"    [File] PDF appears to be scanned — trying vision LLM...")
+
+    supports_vision = getattr(llm, "supports_vision", False)
+    if supports_vision:
+        vision_result = await _extract_pdf_via_vision(path, llm)
+        if vision_result and vision_result.content and len(vision_result.content.strip()) >= 50:
+            vision_result.method = "vision"
+            return vision_result
+        print(f"    [File] Vision extraction insufficient — falling back to native text")
+    else:
+        print(f"    [File] Vision not supported by this provider — skipping vision fallback")
+
+    # Step 4: Safety net — return native text even if low quality (never discard usable content)
+    if native_text.strip():
+        print(f"    [File] Using low-quality native text as fallback ({len(native_text)} chars)")
+        return SourceResult(
+            content=native_text,
+            source_url=f"file://{path.name}",
+            source_name=f"file/{path.name}",
+            method="native",
+        )
+
+    # Step 5: Both native and vision produced nothing
+    print(f"    [File] No content extracted from PDF")
+    return None
 
 
 async def _extract_pdf_via_vision(path: Path, llm) -> SourceResult | None:
@@ -172,6 +230,7 @@ async def _extract_pdf_via_vision(path: Path, llm) -> SourceResult | None:
         content=full,
         source_url=f"file://{path.name}",
         source_name=f"file/{path.name}",
+        method="vision",
     )
 
 
@@ -200,6 +259,7 @@ async def _extract_image(path: Path, llm) -> SourceResult | None:
         content=text,
         source_url=f"file://{path.name}",
         source_name=f"file/{path.name}",
+        method="vision",
     )
 
 

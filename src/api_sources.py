@@ -33,6 +33,7 @@ class SourceResult:
     attributes: dict[str, str] | None = None  # pre-extracted attrs (bypasses LLM)
     source_name: str = ""                   # e.g. "DigiKey API", "web"
     tables: list[dict] | None = None        # HTML tables as [{header: value}]
+    method: str = "native"                  # "native" (text) or "vision" (OCR via LLM)
 
 
 # ── Unit conversion helper ────────────────────────────────────────────────────

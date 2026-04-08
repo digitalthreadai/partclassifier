@@ -104,7 +104,7 @@ def _clean_result(result: dict, part_class: str, part_name: str = "") -> tuple[d
         if part_name:
             vs = _single_value(vs, part_name)
         cleaned[k] = vs
-    return normalize_attrs_with_lov_status(cleaned, part_class)
+    return normalize_attrs_with_lov_status(cleaned, part_class)  # returns 3-tuple
 
 
 class AttributeExtractor:
@@ -191,7 +191,7 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        attrs, lov_mismatches = _clean_result(result, part_class, part_name=part_name)
+        attrs, lov_mismatches, range_originals = _clean_result(result, part_class, part_name=part_name)
 
         # Validation retry: only if first attempt returned SOME data but missed
         # >50% of SCHEMA attrs (count schema hits, not total attrs)
@@ -205,18 +205,19 @@ class AttributeExtractor:
                 )
                 if retry_attrs:
                     # Clean only the new retry results (existing attrs already clean),
-                    # then merge into attrs and lov_mismatches
-                    new_attrs, new_mismatches = _clean_result(
+                    # then merge into attrs, lov_mismatches, and range_originals
+                    new_attrs, new_mismatches, new_range_originals = _clean_result(
                         retry_attrs, part_class, part_name=part_name
                     )
                     attrs.update(new_attrs)
                     lov_mismatches.update(new_mismatches)
+                    range_originals.update(new_range_originals)
                     # Drop mismatches for attrs that the retry filled with a valid value
                     for k in new_attrs:
                         if k not in new_mismatches and k in lov_mismatches:
                             del lov_mismatches[k]
 
-        return attrs, lov_mismatches
+        return attrs, lov_mismatches, range_originals
 
     async def _retry_missing(self, content: str, part_class: str, mfg_part_num: str,
                               unit_short: str, convert_note: str,
@@ -282,4 +283,4 @@ class AttributeExtractor:
         )
 
         result = _parse_json(raw)
-        return normalize_attrs_with_lov_status(result, part_class)
+        return normalize_attrs_with_lov_status(result, part_class)  # returns 3-tuple
