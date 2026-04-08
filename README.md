@@ -2,7 +2,7 @@
 
 A production-grade AI agent that reads mechanical parts from Excel, searches distributor APIs and the web for specifications, classifies each part into 93 categories using a classify-then-blind-extract-then-validate-then-extract architecture, and writes per-class Excel output files with TC Class ID -- ready for Teamcenter PLM import. Includes a PLMXML-to-JSON converter for importing Teamcenter classification hierarchies.
 
-**7,031 LOC | 18 modules | 9 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases | class_validator.py | classification_hints.json | configurable aliases.json**
+**~8,400 LOC | 20 modules | 9 LLM providers | 3 distributor APIs | 93 part classes | 46 attributes | 500+ aliases | class_validator.py | classification_hints.json | configurable aliases.json**
 
 **Three execution modes:**
 
@@ -55,11 +55,13 @@ python main.py --fresh             # clear cache + progress, start fresh
 ## Pipeline (7 Steps)
 
 ```
-1. Read Excel input
+1. Read Excel input (+ infer UOM from part name if not provided)
        |
 2. Multi-tier search (APIs -> Stealth -> Cache -> DuckDuckGo)
        |
-3. Initial classify (web content patterns -> LLM fallback)
+   2b. Part name signal validation → evict cache + re-search if page mismatches
+       |
+3. Initial classify (part name signals -> web content patterns -> LLM fallback)
        |
 4. Class-blind LLM extraction (no class bias -- extracts ALL specs)
        |
@@ -67,18 +69,22 @@ python main.py --fresh             # clear cache + progress, start fresh
        |
 6. Class-aware LLM extraction (with validated class + regex pre-extraction)
        |
-7. Write per-class Excel output with TC Class ID + HTML executive summary
+7. Normalize attrs (fractions → decimal, strip UOM suffix, LOV normalization)
+       |
+8. Write per-class Excel output with TC Class ID + HTML executive summary
 ```
 
 For each part in the input Excel:
 
-1. **Searches** for specs via distributor APIs first (DigiKey OAuth2, Mouser API key, McMaster-Carr mTLS), falling back to CloakBrowser stealth scraping, then DuckDuckGo web search with curl_cffi (Chrome 124 TLS fingerprint).
-2. **Cleans** content via HTML table extraction and smart truncation (3K/5K/8K char limits) to prioritize specs over navigation boilerplate.
-3. **Classifies** the part deterministically from web content (breadcrumbs, category labels, URL paths). Falls back to LLM classification only when inconclusive. 93 part classes supported (via JSON schema with Teamcenter-compatible hierarchical class tree).
+1. **Reads** input, inferring UOM from the part name if the Unit of Measure column is blank (e.g., "M10" → metric, `"` marks → inches; abstains on conflicts).
+2. **Searches** for specs via distributor APIs first (DigiKey OAuth2, Mouser API key, McMaster-Carr mTLS), falling back to CloakBrowser stealth scraping, then DuckDuckGo web search with curl_cffi (Chrome 124 TLS fingerprint).
+   - **Part name signal validation:** Dimensional signals (e.g., `.136ID`, `.280OD`, `M8 x 1.25`) are parsed from the part name and matched against the scraped page. If the page doesn't contain the expected values, the URL cache entry is evicted and the search retries once.
+3. **Classifies** — part name signals (thread sizes, dimensions) are the highest-priority signal. Falls back to deterministic web content classification (breadcrumbs, category labels, URL paths), then LLM. 93 part classes supported.
 4. **Class-blind LLM extraction** extracts ALL specs without class bias, breaking the circular dependency between classification and extraction.
 5. **Validates** classification via attribute-fit scoring against CLASS_SCHEMAS. Dynamically computes universal attrs (>90% of classes). Reclassifies only with strong evidence (MIN_ADVANTAGE=2). Abstains when uncertain.
-6. **Class-aware extraction** with validated class + regex pre-extraction + unit handling. Supports inches, mm, or as-is mode (preserves original units when not specified).
-7. **Normalizes** attributes via 500+ alias mappings to canonical names and **writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns. Also generates an HTML executive summary report (`output/run_summary.html`).
+6. **Class-aware extraction** with validated class + regex pre-extraction + unit handling. Supports inches, mm, or as-is mode (preserves original units when not specified). PDF spec files use native text extraction with LLM vision OCR fallback for scanned documents.
+7. **Normalizes** attributes: fraction values converted to decimal ("13/64\"" → "0.203\"), unit suffixes stripped from numeric values ("0.23 inches" → "0.23"), LOV values resolved via RapidFuzz string matching then LLM semantic fallback if needed, ranges averaged (original value preserved in a companion column).
+8. **Writes** one output Excel file per part class into the `output/` folder, with TC Class ID and schema-ordered columns. Also generates an HTML executive summary report (`output/run_summary.html`).
 
 ---
 
@@ -190,6 +196,12 @@ The Claude Code CLI mode (`main_cc.py`) uses the `claude` CLI on PATH and needs 
 | `SSL_VERIFY` | `true` | Set to `false` to disable SSL certificate verification (for internal networks with self-signed certs) |
 | `STEALTH_BROWSER_ENABLED` | `true` | Set to `false` to disable CloakBrowser stealth scraping |
 
+## Processing Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POST_PROCESS_DEDUP` | `false` | Set to `true` to enable post-processing deduplication of agent-extracted columns via LLM. Merges columns only when values are identical across all overlapping parts AND LLM confirms semantic equivalence. Transitive chains resolved (A→B, B→C both collapse to A). Pre/post Excel files written side-by-side for comparison. Adds latency; useful for large batches with overlapping agent-extracted attrs. |
+
 ---
 
 ## Distributor API Configuration (Optional)
@@ -223,7 +235,7 @@ MCMASTER_CLIENT_KEY=path/to/client-key.pem
 | **Regex pre-extraction** | Tables + key-value patterns before LLM | Smaller LLM extraction prompts |
 | **Hybrid extraction prompt** | Priority schema hints + maximize coverage | Higher attribute yield |
 | **LLM response cache** | 90-day classify / 30-day extract TTL | 100% for cached parts |
-| **URL cache** | 30-day TTL + bad-entry eviction, shared across modes | Skips search entirely |
+| **URL cache** | 30-day TTL + bad-entry eviction + signal validation | Skips search entirely; evicts bad URLs |
 | **Content cleaner** | HTML table extraction + smart truncation | Better spec-to-noise ratio |
 | **Manufacturer rotation** | Round-robin interleave by manufacturer | Reduces bot detection |
 | **Distributor APIs** | DigiKey OAuth2, Mouser API, McMaster mTLS | 100% for API-matched parts |
@@ -283,9 +295,12 @@ Each output Excel contains:
   - `Extraction Coverage %` -- TC schema attrs matched / total
   - `Source Reliability %` -- weighted source quality score
   - `Classification Confidence %` -- weighted classification confidence
-  - `Source Type` -- API / Stealth / Web / Part Name
+  - `Source Type` -- API / Stealth / Web / Part Name / Spec File (Text) / Spec File (Vision)
   - `LOV Compliance %` -- LOV-governed attrs with valid values
   - `Validation Action` -- Confirmed / Reclassified / Abstained
+- **`<Attr>-Original-RANGE-Value` columns** (steel blue header) -- original range string before averaging (e.g., "3.8 to 4.2 mm" alongside averaged "3.95")
+- **`<Attr>-Original-FRACTION-Value` columns** (amber header) -- original fraction before decimal conversion (e.g., "13/64\"" alongside "0.203")
+- Agent-extracted columns (attrs found outside the TC schema, not class-scoped)
 
 ```
 output/
@@ -303,12 +318,19 @@ output/
 ## Reliability Features
 
 - **Multi-tier search:** APIs -> stealth browser -> cache -> DuckDuckGo -> fallback (7 tiers)
-- **Deterministic classification:** 90+ class aliases with specificity resolution, 95% accuracy
+- **Part name signal validation:** Dimensional signals parsed from the part name (thread sizes, ID/OD/thickness) are matched against scraped content; cache evicted + re-search triggered if page doesn't contain expected values (max 1 retry)
+- **UOM inference:** Unit of Measure auto-detected from part name when not in input (M-series → metric, inch marks → imperial; abstains on conflict)
+- **Deterministic classification:** Part name signals are highest priority; 90+ class aliases with specificity resolution, 95% accuracy
 - **Regex + LLM agreement tracking:** measures extraction confidence
 - **Hybrid extraction prompt:** priority schema hints + maximize coverage
 - **Canonical normalization:** 500+ alias mappings ensure consistent columns
-- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and LOV normalization
+- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and class-scoped LOV normalization (CLASS_LOV_MAP)
+- **LOV normalization:** RapidFuzz string matching → LLM semantic fallback (batched, validated against LOV list before acceptance)
+- **Fraction → decimal:** "13/64\"" → "0.203\"", "1-1/2\"" → "1.5\"", works inside ranges; date/version strings guarded
+- **Unit suffix stripping:** Numeric attribute values strip trailing UOM ("0.23 inches" → "0.23"); datatype-aware to protect strings
+- **Range original preservation:** Original range string retained in companion column when averaged
 - **Unit handling:** inches, mm, or as-is (preserves original units)
+- **PDF vision fallback:** Native text extraction (pdfplumber) with LLM vision OCR fallback for scanned/garbled PDFs; quality-scored selection
 - **Class-blind validation:** attribute-fit scoring against CLASS_SCHEMAS, dynamically computed universal attrs, abstain mechanism
 - **Retry logic:** exponential backoff for timeouts, rate limits (429, 503)
 - **Validation retry:** re-extraction for missing attrs when >50% schema attrs unfilled
@@ -363,24 +385,28 @@ PartClassifier/
 ├── output/                    # One .xlsx per part class (with TC Class ID)
 ├── docs/                      # HTML documentation suite
 └── src/
-    ├── llm_client.py          # Unified async LLM client (9 providers)
+    ├── llm_client.py          # Unified async LLM client (9 providers, vision capability detection)
     ├── claude_code_client.py  # Claude CLI wrapper (batch + parallel)
     ├── part_classifier.py     # LLM classification + batch (100/call)
     ├── class_validator.py     # Class-blind extraction + attribute-fit validation
     ├── web_scraper.py         # 7-tier content lookup with URL caching
     ├── stealth_scraper.py     # CloakBrowser integration
     ├── api_sources.py         # DigiKey (OAuth2) / Mouser (API) / McMaster (mTLS)
-    ├── attribute_extractor.py # Hybrid extraction + unit conversion + retry
+    ├── attribute_extractor.py # Hybrid extraction + LOV LLM augmentation + unit conversion + retry
     ├── class_extractor.py     # Deterministic classification (95% accuracy)
     ├── content_cleaner.py     # HTML table extraction + smart truncation
     ├── regex_extractor.py     # Pattern pre-extraction + agreement tracking
-    ├── attr_schema.py         # JSON schema loader (93 classes, aliases, LOV normalization)
+    ├── attr_schema.py         # JSON schema loader (93 classes, aliases, class-scoped LOV normalization)
     ├── llm_cache.py           # Thread-safe LLM response cache with TTL
     ├── confidence.py          # Per-part quality metrics (6 functions)
     ├── report_generator.py    # HTML executive summary generator
     ├── metrics.py             # Run metrics tracker + history
     ├── shared.py              # Manufacturer rotation, cache I/O, atomic writes
-    └── excel_handler.py       # Input reader + per-class writer + TC Class ID
+    ├── excel_handler.py       # Input reader + per-class writer + TC Class ID + range/fraction orig cols
+    ├── file_extractor.py      # PDF/spec file extraction (native text + LLM vision OCR fallback)
+    ├── part_name_parser.py    # Part name signal parsing, UOM inference, web page validation
+    ├── post_processor.py      # Agent column deduplication (transitive chains, LLM semantic confirmation)
+    └── range_handler.py       # Range averaging, fraction→decimal conversion, unit suffix stripping
 ```
 
 ---
