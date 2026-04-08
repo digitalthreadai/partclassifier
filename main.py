@@ -238,9 +238,11 @@ async def process_part(
         print(f"  Mapped  : {original_class} -> {part_class} (JSON)")
 
     # STEP 3 — Validate classification via class-blind attribute extraction
+    # Skipped when Part Name drove classification — final attr validation runs after Step 4b instead,
+    # where spec file attrs dominate and the data is more trustworthy than blind extraction.
     from src.class_validator import blind_extract, validate_classification
     validation_reason = ""
-    if classify_content and part_class not in ("Unclassified", "Error"):
+    if classify_source != "part_name" and classify_content and part_class not in ("Unclassified", "Error"):
         blind_attrs = await blind_extract(classifier.llm, classify_content)
         if blind_attrs:
             print(f"  Blind   : {len(blind_attrs)} attrs extracted")
@@ -386,6 +388,18 @@ async def process_part(
         # If file extraction provided most of the data, prefer file as source
         if len(file_attrs) >= len(attributes) * 0.5:
             source_url = file_result.source_url if file_result else source_url
+
+    # STEP 4c — Final attr validation (only when Part Name drove classification)
+    # By this point spec file attrs have won the merge — validate classification
+    # against the best available extracted data, not blind-extracted content.
+    # validate_classification() accepts any attr dict; the scoring logic is identical.
+    if classify_source == "part_name" and attributes and part_class not in ("Unclassified", "Error"):
+        final_validated, validation_reason = validate_classification(part_class, attributes, part_name)
+        if final_validated != part_class:
+            print(f"  Validate: {part_class} -> {final_validated} ({validation_reason}) [final attrs]")
+            part_class = final_validated
+        else:
+            print(f"  Validate: {part_class} {validation_reason} [final attrs]")
 
     if attributes:
         print(f"  Attrs ({len(attributes)}):")
