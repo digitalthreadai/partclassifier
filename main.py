@@ -49,7 +49,8 @@ def _has_flag(flag: str) -> bool:
 
 
 EXCEL_PATH = Path(_get_arg("--input", str(BASE_DIR / "input" / "PartClassifierInput.xlsx")))
-OUTPUT_DIR = Path(_get_arg("--output", str(BASE_DIR / "output")))
+_ts = __import__("datetime").datetime.now().strftime("%m%d%Y%H%M")
+OUTPUT_DIR = Path(_get_arg("--output", str(BASE_DIR / f"output-{_ts}")))
 NO_CACHE = _has_flag("--no-cache")
 CLEAR_CACHE = _has_flag("--clear-cache")
 FRESH = _has_flag("--fresh")

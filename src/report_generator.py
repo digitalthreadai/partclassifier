@@ -2,11 +2,15 @@
 Generate a dark-themed HTML executive summary report for each classification run.
 
 Produces output/run_summary.html with:
-  - KPI cards (classified %, avg coverage, avg confidence)
-  - Per-class table with averages
+  - KPI cards (classified %, avg coverage, avg confidence, avg LOV compliance)
+  - Per-class table with averages (including LOV compliance)
   - Confidence distribution (band breakdown)
+  - Source type distribution bar chart
   - Low-confidence parts list
+  - All-parts expandable table (grouped by confidence band)
   - Run details (timing, cache, tokens)
+  - CSV copy-to-clipboard on all tables
+  - Sortable table columns
 """
 
 import json
@@ -52,7 +56,8 @@ def generate_run_summary(
         ac = sum(p.get("extraction_coverage", 0) for p in parts) / n
         ar = sum(p.get("source_reliability", 0) for p in parts) / n
         cc = sum(p.get("classification_confidence", 0) for p in parts) / n
-        class_rows.append({"class": cls, "count": n, "coverage": ac, "reliability": ar, "confidence": cc})
+        al = sum(p.get("lov_compliance", 0) for p in parts) / n
+        class_rows.append({"class": cls, "count": n, "coverage": ac, "reliability": ar, "confidence": cc, "lov": al})
 
     # Confidence distribution bands
     bands = {"90-100%": 0, "70-89%": 0, "50-69%": 0, "<50%": 0}
@@ -61,6 +66,12 @@ def generate_run_summary(
         elif c >= 70: bands["70-89%"] += 1
         elif c >= 50: bands["50-69%"] += 1
         else: bands["<50%"] += 1
+
+    # Source type distribution
+    source_counts: dict[str, int] = {}
+    for r in results:
+        st = r.get("source_type") or "Unknown"
+        source_counts[st] = source_counts.get(st, 0) + 1
 
     # Low-confidence parts (any metric < 50%)
     low_conf = []
@@ -75,6 +86,9 @@ def generate_run_summary(
                 "pn": pn, "name": (name or "")[:50], "class": r.get("part_class", ""),
                 "coverage": ec, "reliability": sr, "confidence": cc,
             })
+
+    # All parts sorted by confidence descending (for expandable table)
+    all_parts = sorted(results, key=lambda r: r.get("classification_confidence", 0), reverse=True)
 
     # Tokens
     total_tokens = token_usage.get("total_tokens", 0)
@@ -107,17 +121,24 @@ h1{{font-size:2rem;background:linear-gradient(135deg,var(--accent),var(--accent2
 .kpi .value{{font-size:2.2rem;font-weight:700;font-family:'JetBrains Mono',monospace}}
 .kpi .label{{color:var(--muted);font-size:.85rem;margin-top:.3rem}}
 .green{{color:var(--green)}}.amber{{color:var(--amber)}}.red{{color:var(--red)}}.purple{{color:var(--accent)}}
-table{{width:100%;border-collapse:collapse;margin-bottom:2rem;background:var(--bg2);border-radius:var(--radius);overflow:hidden}}
-th{{background:var(--bg3);padding:.75rem 1rem;text-align:left;font-weight:600;font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}}
+.table-wrap{{position:relative;margin-bottom:2rem}}
+.csv-btn{{margin-bottom:.5rem;padding:4px 12px;font-size:.75rem;font-weight:600;background:rgba(108,99,255,.15);color:var(--accent);border:1px solid rgba(108,99,255,.4);border-radius:4px;cursor:pointer;transition:background .15s}}
+.csv-btn:hover{{background:rgba(108,99,255,.3)}}
+table{{width:100%;border-collapse:collapse;background:var(--bg2);border-radius:var(--radius);overflow:hidden}}
+th{{background:var(--bg3);padding:.75rem 1rem;text-align:left;font-weight:600;font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;cursor:pointer;user-select:none}}
+th:hover{{color:var(--text)}}
+th.sort-asc::after{{content:" ▲";font-size:.7rem}}
+th.sort-desc::after{{content:" ▼";font-size:.7rem}}
 td{{padding:.65rem 1rem;border-top:1px solid var(--border);font-size:.9rem}}
 tr:hover td{{background:rgba(108,99,255,.05)}}
+.group-header td{{background:var(--bg3);color:var(--accent);font-weight:600;font-size:.8rem;letter-spacing:.5px;padding:.4rem 1rem;border-top:2px solid var(--border)}}
 .section{{margin-bottom:2.5rem}}
 .section h2{{font-size:1.3rem;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}}
 .bar-row{{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}}
-.bar-label{{width:80px;text-align:right;font-size:.85rem;color:var(--muted)}}
+.bar-label{{width:100px;text-align:right;font-size:.85rem;color:var(--muted);white-space:nowrap}}
 .bar-track{{flex:1;height:24px;background:var(--bg3);border-radius:4px;overflow:hidden}}
 .bar-fill{{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:.5rem;font-size:.75rem;font-weight:600;min-width:30px}}
-.bar-fill.high{{background:var(--green)}}.bar-fill.med{{background:var(--amber)}}.bar-fill.low{{background:var(--red)}}.bar-fill.top{{background:var(--accent)}}
+.bar-fill.high{{background:var(--green)}}.bar-fill.med{{background:var(--amber)}}.bar-fill.low{{background:var(--red)}}.bar-fill.top{{background:var(--accent)}}.bar-fill.teal{{background:var(--accent2)}}.bar-fill.purple{{background:var(--accent)}}
 .detail-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}}
 .detail{{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem}}
 .detail .dl{{color:var(--muted);font-size:.8rem}}.detail .dv{{font-family:'JetBrains Mono',monospace;font-size:1.1rem;margin-top:.25rem}}
@@ -125,6 +146,9 @@ tr:hover td{{background:rgba(108,99,255,.05)}}
 .badge-green{{background:rgba(74,222,128,.15);color:var(--green)}}
 .badge-amber{{background:rgba(251,146,60,.15);color:var(--amber)}}
 .badge-red{{background:rgba(248,113,113,.15);color:var(--red)}}
+details summary{{cursor:pointer;font-size:1.1rem;font-weight:600;padding:.75rem 0;color:var(--accent2);list-style:none}}
+details summary::before{{content:"▶ ";font-size:.8rem}}
+details[open] summary::before{{content:"▼ ";font-size:.8rem}}
 footer{{text-align:center;color:var(--muted);font-size:.8rem;margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border)}}
 </style>
 </head>
@@ -144,10 +168,13 @@ footer{{text-align:center;color:var(--muted);font-size:.8rem;margin-top:3rem;pad
 
 <div class="section">
 <h2>Per-Class Breakdown</h2>
+<div class="table-wrap">
+<button class="csv-btn" onclick="copyTableCSV(this)">Copy CSV</button>
 <table>
-<tr><th>Class</th><th>Parts</th><th>Extraction Coverage</th><th>Source Reliability</th><th>Classification Confidence</th></tr>
+<tr><th>Class</th><th>Parts</th><th>Extraction Coverage</th><th>Source Reliability</th><th>Classification Confidence</th><th>LOV Compliance</th></tr>
 {"".join(_class_row(cr) for cr in class_rows)}
 </table>
+</div>
 </div>
 
 <div class="section">
@@ -155,7 +182,19 @@ footer{{text-align:center;color:var(--muted);font-size:.8rem;margin-top:3rem;pad
 {_bands_html(bands, total)}
 </div>
 
+<div class="section">
+<h2>Source Type Distribution</h2>
+{_source_dist_html(source_counts, total)}
+</div>
+
 {"" if not low_conf else _low_conf_section(low_conf)}
+
+<div class="section">
+<details>
+<summary>All Parts ({total}) — click to expand</summary>
+{_all_parts_section(all_parts)}
+</details>
+</div>
 
 <div class="section">
 <h2>Run Details</h2>
@@ -172,6 +211,65 @@ footer{{text-align:center;color:var(--muted);font-size:.8rem;margin-top:3rem;pad
 <footer>Generated by PartClassifier v2.0 &middot; {now}</footer>
 
 </div>
+
+<script>
+// ── CSV Copy ──────────────────────────────────────────────────────────────
+function copyTableCSV(btn) {{
+  const table = btn.nextElementSibling;
+  const rows = [...table.querySelectorAll('tr')].map(tr =>
+    [...tr.querySelectorAll('th,td')].map(c => c.innerText.replace(/\t/g, ' ')).join('\t')
+  );
+  navigator.clipboard.writeText(rows.join('\n')).then(() => {{
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }}).catch(() => {{
+    // Fallback for browsers without clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = rows.join('\n');
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy CSV', 1500);
+  }});
+}}
+
+// ── Sortable Tables ───────────────────────────────────────────────────────
+function makeSortable(table) {{
+  const headers = table.querySelectorAll('th');
+  headers.forEach((th, col) => {{
+    let asc = true;
+    th.addEventListener('click', () => {{
+      // Skip group-header rows when sorting
+      const rows = [...table.querySelectorAll('tr:not(:first-child)')].filter(
+        r => !r.classList.contains('group-header')
+      );
+      // Find group-header rows to re-insert after sorting (keep them in place)
+      const groupHeaders = [...table.querySelectorAll('tr.group-header')];
+
+      rows.sort((a, b) => {{
+        const av = a.cells[col]?.innerText.trim() || '';
+        const bv = b.cells[col]?.innerText.trim() || '';
+        const an = parseFloat(av), bn = parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+        return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+      }});
+
+      // Remove group headers temporarily, append sorted rows, then re-add group headers
+      groupHeaders.forEach(r => r.remove());
+      rows.forEach(r => table.appendChild(r));
+
+      // Update sort indicators
+      headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+      asc = !asc;
+    }});
+  }});
+}}
+document.querySelectorAll('table').forEach(makeSortable);
+</script>
 </body>
 </html>"""
 
@@ -199,7 +297,8 @@ def _class_row(cr: dict) -> str:
         f'<tr><td>{cr["class"]}</td><td>{cr["count"]}</td>'
         f'<td>{_badge(cr["coverage"])}</td>'
         f'<td>{_badge(cr["reliability"])}</td>'
-        f'<td>{_badge(cr["confidence"])}</td></tr>\n'
+        f'<td>{_badge(cr["confidence"])}</td>'
+        f'<td>{_badge(cr["lov"])}</td></tr>\n'
     )
 
 
@@ -218,9 +317,34 @@ def _bands_html(bands: dict, total: int) -> str:
     return rows
 
 
+_SOURCE_COLORS = {
+    "Spec File": "teal",
+    "API": "purple",
+    "Web (cached)": "high",
+    "Web": "med",
+    "Part Name": "low",
+    "None": "low",
+}
+
+
+def _source_dist_html(source_counts: dict, total: int) -> str:
+    rows = ""
+    for label in sorted(source_counts.keys(), key=lambda k: source_counts[k], reverse=True):
+        count = source_counts[label]
+        pct = count / total * 100 if total > 0 else 0
+        c = _SOURCE_COLORS.get(label, "med")
+        rows += (
+            f'<div class="bar-row">'
+            f'<div class="bar-label">{label}</div>'
+            f'<div class="bar-track"><div class="bar-fill {c}" style="width:{max(pct, 3):.0f}%">{count}</div></div>'
+            f'</div>\n'
+        )
+    return rows or "<p style='color:var(--muted)'>No source data available.</p>"
+
+
 def _low_conf_section(low_conf: list[dict]) -> str:
     rows = ""
-    for p in low_conf[:20]:  # limit to 20
+    for p in low_conf[:20]:
         rows += (
             f'<tr><td>{p["pn"]}</td><td>{p["name"]}</td><td>{p["class"]}</td>'
             f'<td>{_badge(p["coverage"])}</td>'
@@ -230,9 +354,52 @@ def _low_conf_section(low_conf: list[dict]) -> str:
     return f"""
 <div class="section">
 <h2>Low-Confidence Parts (any metric &lt;50%)</h2>
+<div class="table-wrap">
+<button class="csv-btn" onclick="copyTableCSV(this)">Copy CSV</button>
 <table>
 <tr><th>Part #</th><th>Name</th><th>Class</th><th>Coverage</th><th>Reliability</th><th>Confidence</th></tr>
 {rows}
 </table>
 </div>
+</div>
 """
+
+
+def _all_parts_section(all_parts: list[dict]) -> str:
+    """All parts grouped by confidence band, in a single sortable table."""
+    band_defs = [
+        ("90-100% Confidence", lambda c: c >= 90),
+        ("70-89% Confidence",  lambda c: 70 <= c < 90),
+        ("50-69% Confidence",  lambda c: 50 <= c < 70),
+        ("<50% Confidence",    lambda c: c < 50),
+    ]
+
+    rows = ""
+    for band_label, pred in band_defs:
+        band_parts = [r for r in all_parts if pred(r.get("classification_confidence", 0))]
+        if not band_parts:
+            continue
+        rows += f'<tr class="group-header"><td colspan="8">▸ {band_label} ({len(band_parts)} parts)</td></tr>\n'
+        for r in band_parts:
+            part = r.get("part", {})
+            pn = part.get("Manufacturer Part Number", "")
+            name = (part.get("Part Name") or "")[:45]
+            cls = r.get("part_class", "")
+            src = r.get("source_type", "")
+            ec = r.get("extraction_coverage", 0)
+            sr = r.get("source_reliability", 0)
+            cc = r.get("classification_confidence", 0)
+            lc = r.get("lov_compliance", 0)
+            rows += (
+                f'<tr><td>{pn}</td><td>{name}</td><td>{cls}</td><td>{src}</td>'
+                f'<td>{_badge(ec)}</td><td>{_badge(sr)}</td>'
+                f'<td>{_badge(cc)}</td><td>{_badge(lc)}</td></tr>\n'
+            )
+
+    return f"""<div class="table-wrap" style="margin-top:1rem">
+<button class="csv-btn" onclick="copyTableCSV(this)">Copy CSV</button>
+<table>
+<tr><th>Part #</th><th>Name</th><th>Class</th><th>Source</th><th>Coverage</th><th>Reliability</th><th>Confidence</th><th>LOV Compliance</th></tr>
+{rows}
+</table>
+</div>"""
