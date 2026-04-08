@@ -14,7 +14,9 @@ PUBLIC API
 - ALIASES: dict[str, str]            — lowercase alias -> canonical attribute name
 - CLASS_ALIASES: dict[str, str]      — lowercase class alias -> canonical class name
 - CLASS_TREE_CHILDREN: dict[str, list[str]] — parent class name -> child class names
-- LOV_MAP: dict[str, list[str]]      — canonical attr name -> LOV values
+- CLASS_LOV_MAP: dict[str, dict[str, list[str]]] — class name -> {canonical_attr_name -> [lov_values]}
+                                       ID-resolved per class (correct LOV even when attr names clash globally)
+- LOV_MAP: dict[str, list[str]]      — canonical attr name -> LOV values (global, kept for compat)
 - ATTR_DICT: dict[str, dict]         — attr id -> full attribute record
 - get_schema(part_class) -> list[str]
 - get_tc_class_id(part_class) -> str
@@ -42,10 +44,11 @@ _ALIASES_JSON = _SCHEMA_DIR / "aliases.json"
 KNOWN_CLASSES: list[str] = []
 TC_CLASS_IDS: dict[str, str] = {}          # class_name -> Teamcenter class ID
 CLASS_SCHEMAS: dict[str, list[str]] = {}   # class_name -> [canonical attr names] (inherited)
+CLASS_LOV_MAP: dict[str, dict[str, list[str]]] = {}  # class_name -> {canonical_attr_name -> [lov_values]}
 ALIASES: dict[str, str] = {}               # lowercase alias -> canonical attr name
 CLASS_ALIASES: dict[str, str] = {}         # lowercase class alias -> canonical class name
 CLASS_TREE_CHILDREN: dict[str, list[str]] = {}  # parent name -> [child names]
-LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values
+LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values (global fallback, kept for compat)
 ATTR_DICT: dict[str, dict] = {}            # attr id -> full attribute record
 ATTR_DATATYPES: dict[str, str] = {}        # canonical attr name -> datatype string (float/string/etc)
 _DEFAULT_SCHEMA: list[str] = []
@@ -56,7 +59,7 @@ _SCHEMA_SOURCE: str = "none"               # "json" or "none"
 
 def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
     """Load schema from Classes.json + Attributes.json."""
-    global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, ALIASES, CLASS_ALIASES
+    global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, CLASS_LOV_MAP, ALIASES, CLASS_ALIASES
     global CLASS_TREE_CHILDREN, LOV_MAP, ATTR_DICT, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
 
     # --- Load attributes ---
@@ -65,6 +68,7 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
 
     attr_by_id: dict[str, dict] = {}
     attr_name_by_id: dict[str, str] = {}
+    attr_lov_by_id: dict[str, list[str]] = {}   # id -> lov_values (for class-scoped lookup)
 
     for attr in attrs_data.get("attributes", attrs_data.get("tree", [])):
         aid = str(attr["id"])
@@ -82,9 +86,10 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         for alias in attr.get("aliases", []):
             ALIASES[alias.lower()] = canonical
 
-        # Populate LOV_MAP
+        # Populate global LOV_MAP (kept for backwards compat)
         if attr.get("lov"):
             LOV_MAP[canonical] = attr["lov"]
+            attr_lov_by_id[aid] = attr["lov"]
 
         # Populate ATTR_DATATYPES (optional field — supports float/string range averaging)
         if attr.get("datatype"):
@@ -94,8 +99,14 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
     with open(classes_path, "r", encoding="utf-8") as f:
         classes_data = json.load(f)
 
-    # Flatten the class tree, computing inherited attributes
-    _flatten_tree(classes_data.get("tree", classes_data.get("classes", [])), inherited_attrs=[], attr_name_by_id=attr_name_by_id)
+    # Flatten the class tree, computing inherited attributes and class-scoped LOV maps
+    _flatten_tree(
+        classes_data.get("tree", classes_data.get("classes", [])),
+        inherited_attrs=[],
+        attr_name_by_id=attr_name_by_id,
+        inherited_lov_map={},
+        attr_lov_by_id=attr_lov_by_id,
+    )
 
     # Build default schema from common attributes
     _DEFAULT_SCHEMA = [
@@ -111,12 +122,19 @@ def _flatten_tree(
     nodes: list[dict],
     inherited_attrs: list[str],
     attr_name_by_id: dict[str, str],
+    inherited_lov_map: dict[str, list[str]],
+    attr_lov_by_id: dict[str, list[str]],
 ) -> None:
     """Recursively walk the class tree, populating module-level data.
 
     Each node accumulates inherited attributes from ancestors plus its own
     directly-assigned attributes. Only leaf and named intermediate classes
     are added to KNOWN_CLASSES.
+
+    CLASS_LOV_MAP is built using attr IDs from attributeslist to resolve the
+    CORRECT LOV list for each class — even when multiple attributes share the
+    same name globally. First-wins rule: parent LOV takes precedence over
+    child re-declarations of the same attribute name.
     """
     for node in nodes:
         name = node["name"]
@@ -137,12 +155,25 @@ def _flatten_tree(
             if a not in full_attrs:
                 full_attrs.append(a)
 
+        # Build class-scoped LOV map: start from inherited (first-wins — parent beats child)
+        # Only add LOV for attrs not already in the inherited map (first-wins rule)
+        full_lov_map: dict[str, list[str]] = dict(inherited_lov_map)
+        for aid in node.get("attributeslist", []):
+            aname = attr_name_by_id.get(str(aid))
+            if aname and aname not in full_lov_map:
+                lov = attr_lov_by_id.get(str(aid))
+                if lov:
+                    full_lov_map[aname] = lov
+
         # Register this class
         KNOWN_CLASSES.append(name)
         TC_CLASS_IDS[name] = class_id
 
         # Schema = full inherited attribute list
         CLASS_SCHEMAS[name] = full_attrs
+
+        # Class-scoped LOV map (ID-resolved, inherited)
+        CLASS_LOV_MAP[name] = full_lov_map
 
         # Class aliases
         for alias in aliases:
@@ -152,9 +183,9 @@ def _flatten_tree(
         if children:
             CLASS_TREE_CHILDREN[name] = [c["name"] for c in children]
 
-        # Recurse into children, passing accumulated attrs
+        # Recurse into children, passing accumulated attrs and LOV map
         if children:
-            _flatten_tree(children, full_attrs, attr_name_by_id)
+            _flatten_tree(children, full_attrs, attr_name_by_id, full_lov_map, attr_lov_by_id)
 
 
 # ── Load schema on import ────────────────────────────────────────────────────
@@ -426,6 +457,21 @@ def normalize_attrs_with_lov_status(
 
     schema = get_schema(part_class)
 
+    # Resolve class-scoped LOV map using same fuzzy logic as get_schema
+    class_lov = CLASS_LOV_MAP.get(part_class, {})
+    if not class_lov:
+        # Fuzzy fallback: try case-insensitive then substring match
+        lower = part_class.lower()
+        for cls_key, lov_map in CLASS_LOV_MAP.items():
+            if cls_key.lower() == lower:
+                class_lov = lov_map
+                break
+        if not class_lov:
+            for cls_key, lov_map in CLASS_LOV_MAP.items():
+                if cls_key.lower() in lower or lower in cls_key.lower():
+                    class_lov = lov_map
+                    break
+
     normalized: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
 
@@ -443,9 +489,10 @@ def normalize_attrs_with_lov_status(
         if not str_val:
             continue
 
-        # LOV normalization with mismatch tracking
-        if canonical in LOV_MAP:
-            matched, ok = _fuzzy_match_lov(str_val, LOV_MAP[canonical])
+        # LOV normalization: use class-scoped LOV map (ID-resolved) with global fallback
+        lov_values = class_lov.get(canonical) or LOV_MAP.get(canonical)
+        if lov_values:
+            matched, ok = _fuzzy_match_lov(str_val, lov_values)
             if ok:
                 str_val = matched
             else:

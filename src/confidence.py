@@ -6,7 +6,7 @@ Metrics are computed from data already available in the pipeline.
 """
 
 import re
-from src.attr_schema import ALIASES, LOV_MAP, get_schema
+from src.attr_schema import ALIASES, LOV_MAP, CLASS_LOV_MAP, get_schema
 
 
 # ── Column 1: Attributes Extraction Coverage % ──────────────────────────────
@@ -198,11 +198,20 @@ def compute_lov_compliance(attributes: dict, part_class: str, lov_mismatches: di
     Returns 0-100. If no LOV-governed TC attributes were extracted, returns 100.
     """
     schema_set = set(get_schema(part_class)) if part_class else None
+    # Resolve class-scoped LOV map (ID-resolved) with global fallback
+    class_lov = CLASS_LOV_MAP.get(part_class, {})
+    if not class_lov:
+        lower = part_class.lower() if part_class else ""
+        for cls_key, lov_map in CLASS_LOV_MAP.items():
+            if cls_key.lower() == lower:
+                class_lov = lov_map
+                break
     # Count LOV-governed TC attributes that were actually extracted
     lov_total = sum(
         1 for k in attributes
-        if (canonical := ALIASES.get(k.strip().lower(), k.strip())) in LOV_MAP
+        if (canonical := ALIASES.get(k.strip().lower(), k.strip()))
         and attributes[k]
+        and (class_lov.get(canonical) or LOV_MAP.get(canonical))
         and (schema_set is None or canonical in schema_set)
     )
 
