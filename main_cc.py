@@ -74,6 +74,10 @@ class ThreadSafeMetrics:
     def print_summary(self):
         self._metrics.print_summary()
 
+    def summary(self) -> dict:
+        with self._lock:
+            return self._metrics.summary()
+
     def save_to_history(self, path):
         self._metrics.save_to_history(path)
 
@@ -103,11 +107,13 @@ def _retry_cli(fn, label: str, safe_print_fn=print):
 BASE_DIR      = Path(__file__).parent
 
 def _get_output_dir() -> Path:
-    """Get output directory from --output arg or default."""
+    """Get output directory from --output arg or default (timestamped)."""
     for i, arg in enumerate(sys.argv):
         if arg == "--output" and i + 1 < len(sys.argv):
             return Path(sys.argv[i + 1])
-    return BASE_DIR / "output"
+    from datetime import datetime
+    ts = datetime.now().strftime("%m%d%Y%H%M")
+    return BASE_DIR / f"output-{ts}"
 
 OUTPUT_DIR    = _get_output_dir()
 
@@ -359,8 +365,9 @@ def process_part(
                 metrics.record_regex(len(pre_extracted))
 
     # ── STEP 3: Extract attributes ───────────────────────────────────────────
-    from src.attr_schema import normalize_attrs
+    from src.attr_schema import normalize_attrs_with_lov_status
     attributes = {}
+    lov_mismatches: dict[str, str] = {}
     source_url = ""
 
     # Try distributor APIs first (DigiKey, Mouser, McMaster) if configured
@@ -368,7 +375,7 @@ def process_part(
         try:
             result = _run_async(source.search(mfg_name, mfg_part_num, unit_of_measure))
             if result and result.attributes and len(result.attributes) >= 3:
-                attributes = normalize_attrs(result.attributes, part_class)
+                attributes, lov_mismatches = normalize_attrs_with_lov_status(result.attributes, part_class)
                 source_url = result.source_url or ""
                 safe_print(f"  [{index}/{total}] Source ({result.source_name}): {source_url}")
                 break
@@ -484,13 +491,37 @@ def process_part(
         )
 
     from src.attr_schema import get_tc_class_id
+    from src.confidence import (
+        compute_extraction_coverage, compute_source_reliability,
+        compute_classification_confidence, compute_lov_compliance,
+        get_source_type,
+    )
+
+    source_type = get_source_type(source_url or "")
+    mfg_pn_in_content = bool(mfg_part_num and scraped_content and mfg_part_num.lower() in scraped_content.lower())
+    extraction_coverage = compute_extraction_coverage(attributes, part_class)
+    source_reliability = compute_source_reliability(
+        source_url or "", mfg_pn_in_content, attributes, part_class,
+    )
+    classification_confidence = compute_classification_confidence(
+        classify_source="llm", validation_reason="", in_json=in_json,
+    )
+    lov_compliance = compute_lov_compliance(attributes, part_class, lov_mismatches)
+
     return {
-        "part":         part,
-        "part_class":   part_class,
-        "tc_class_id":  get_tc_class_id(part_class),
-        "in_json":      in_json,
-        "attributes":   attributes,
-        "source_url":   source_url or "",
+        "part":                     part,
+        "part_class":               part_class,
+        "tc_class_id":              get_tc_class_id(part_class),
+        "in_json":                  in_json,
+        "attributes":               attributes,
+        "lov_mismatches":           lov_mismatches,
+        "source_url":               source_url or "",
+        "source_type":              source_type,
+        "extraction_coverage":      extraction_coverage,
+        "source_reliability":       source_reliability,
+        "classification_confidence": classification_confidence,
+        "lov_compliance":           lov_compliance,
+        "validation_action":        "No validation",
     }
 
 
@@ -673,6 +704,18 @@ def main() -> None:
     written = _write_output(handler, tracker)
     for path in written:
         safe_print(f"  -> {path}")
+
+    # Generate HTML executive summary
+    from src.report_generator import generate_run_summary
+    metrics_dict = run_metrics.summary()
+    metrics_dict["elapsed_seconds"] = elapsed
+    all_results = list(tracker.results.values())
+    generate_run_summary(
+        all_results, metrics_dict, {},
+        OUTPUT_DIR / "run_summary.html",
+        input_file=EXCEL_PATH.name,
+        model_name=client.display_name(),
+    )
 
     # Clean up progress file on successful completion
     if tracker.total_done >= total and errors == 0:
