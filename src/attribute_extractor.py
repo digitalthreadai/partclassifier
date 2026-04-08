@@ -244,7 +244,7 @@ class AttributeExtractor:
                 temperature=0,
             )
             result = _parse_json(raw)
-            return _clean_result(result, part_class)
+            return result  # raw dict — caller (_retry_missing) handles normalization
         except Exception:
             return {}
 

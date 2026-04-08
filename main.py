@@ -200,19 +200,22 @@ async def process_part(
     # STEP 3b — Extract from spec file (Tier 0, AUTHORITATIVE — never overridden)
     if file_result and file_result.content:
         print(f"  File    : extracting from spec file...")
-        file_extracted = await _retry_llm(
-            lambda: attr_extractor.extract(
-                file_result.content, part_class, mfg_part_num,
-                part_name or classify_text, unit_of_measure,
-                pre_extracted=None,
-            ),
-            "ExtractFromFile"
-        )
-        if file_extracted:
-            file_attrs, file_lov_mismatches = file_extracted
-            print(f"  File    : extracted {len(file_attrs)} attrs (locked, will not be overridden)")
-        if metrics:
-            metrics.record_llm_call("extract")
+        try:
+            file_extracted = await _retry_llm(
+                lambda: attr_extractor.extract(
+                    file_result.content, part_class, mfg_part_num,
+                    part_name or classify_text, unit_of_measure,
+                    pre_extracted=None,
+                ),
+                "ExtractFromFile"
+            )
+            if file_extracted:
+                file_attrs, file_lov_mismatches = file_extracted
+                print(f"  File    : extracted {len(file_attrs)} attrs (locked, will not be overridden)")
+            if metrics:
+                metrics.record_llm_call("extract")
+        except Exception as e:
+            print(f"  File    : extraction error (skipping spec file attrs): {e}")
 
     # STEP 3c — Regex pre-extraction (from web content)
     pre_extracted: dict[str, str] = {}
@@ -249,16 +252,19 @@ async def process_part(
                 metrics.record_cache_hit("extract")
         else:
             print(f"  Content : {len(result.content):,} chars")
-            extracted = await _retry_llm(
-                lambda: attr_extractor.extract(
-                    result.content, part_class, mfg_part_num,
-                    part_name or classify_text, unit_of_measure,
-                    pre_extracted=pre_extracted if pre_extracted else None,
-                ),
-                "Extract"
-            )
-            if extracted:
-                attributes, lov_mismatches = extracted
+            try:
+                extracted = await _retry_llm(
+                    lambda: attr_extractor.extract(
+                        result.content, part_class, mfg_part_num,
+                        part_name or classify_text, unit_of_measure,
+                        pre_extracted=pre_extracted if pre_extracted else None,
+                    ),
+                    "Extract"
+                )
+                if extracted:
+                    attributes, lov_mismatches = extracted
+            except Exception as e:
+                print(f"  Extract : error (continuing with empty attrs): {e}")
             source_url = result.source_url
             if metrics:
                 metrics.record_llm_call("extract")
