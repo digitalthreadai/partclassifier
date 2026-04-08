@@ -127,68 +127,109 @@ async def process_part(
     result = await scraper.find_and_scrape(mfg_name, mfg_part_num, unit_of_measure)
 
     # STEP 2 — Classify
-    # Prefer file content for classification (more authoritative than web)
+    # Priority: Part Name > Spec File > Web (each tier only runs if previous failed)
     part_class = None
     classify_source = "fallback"
+    part_name_tried = False   # tracks if LLM was already called with part_name
 
-    # Build classify content: file content takes priority over web content
-    classify_content = (file_result.content if file_result and file_result.content
-                        else result.content)
-    classify_text = part_name or (classify_content[:500] if classify_content
-                                  else f"{mfg_name} {mfg_part_num}")
+    # ── Tier 0: Part Name (HIGHEST PRIORITY) ────────────────────────────────
+    # Part name is the user's own data — most direct signal available.
+    # LLM is called with just the part name; if it returns Unclassified, fall through.
+    if part_name and len(part_name.strip()) >= 3:
+        # Check LLM cache for part_name key first (free, no API call)
+        if llm_cache:
+            cached = llm_cache.get_classification(part_name)
+            if cached:
+                part_class = cached
+                classify_source = "cache"
+                print(f"  Class   : {part_class}  (cached - part name)")
+                if metrics:
+                    metrics.record_cache_hit("classify")
 
-    # Try pattern matching on content (file or web), no LLM needed
-    if classify_content and len(classify_content) >= 100:
+        if not part_class:
+            part_name_tried = True
+            part_class = await _retry_llm(
+                lambda: classifier.classify(part_name), "ClassifyByName"
+            )
+            if part_class and part_class != "Unclassified":
+                classify_source = "part_name"
+                print(f"  Class   : {part_class}  (part name)")
+                if metrics:
+                    metrics.record_llm_call("classify")
+                if llm_cache:
+                    llm_cache.set_classification(part_name, part_class)
+            else:
+                part_class = None   # let lower tiers try
+
+    # ── Tier 1: Spec File Pattern Matching (no LLM cost) ────────────────────
+    if not part_class and file_result and file_result.content and len(file_result.content) >= 100:
         part_class = extract_class_from_content(
-            classify_content,
-            (file_result.source_url if file_result else result.source_url) or "",
+            file_result.content,
+            file_result.source_url or "",
             mfg_name=mfg_name, mfg_part_num=mfg_part_num,
         )
         if part_class:
-            classify_source = "web_high"
-            src_label = "spec file" if file_result else "web content"
-            print(f"  Class   : {part_class}  (from {src_label})")
+            classify_source = "spec_file_pattern"
+            print(f"  Class   : {part_class}  (spec file pattern)")
 
-    # Try LLM cache
+    # ── Tier 2: Web Content Pattern Matching (no LLM cost) ──────────────────
+    # extract_class_from_content has built-in MPN verification — returns None
+    # if the part number isn't found in the page, guarding against wrong pages.
+    if not part_class and result.content and len(result.content) >= 100:
+        part_class = extract_class_from_content(
+            result.content,
+            result.source_url or "",
+            mfg_name=mfg_name, mfg_part_num=mfg_part_num,
+        )
+        if part_class:
+            classify_source = "web_pattern"
+            print(f"  Class   : {part_class}  (web pattern)")
+
+    # ── Tier 3: LLM Cache (content key) ─────────────────────────────────────
+    # Part name was already checked in Tier 0 — use file/web content as key here.
     if not part_class and llm_cache:
-        # Prefer spec file content over web content for cache key
-        classify_text = (part_name
-                         or (file_result.content[:500] if file_result and file_result.content else "")
-                         or (result.content[:500] if result.content else "")
-                         or f"{mfg_name} {mfg_part_num}")
-        cached_class = llm_cache.get_classification(classify_text)
-        if cached_class:
-            part_class = cached_class
+        content_key = (
+            (file_result.content[:500] if file_result and file_result.content else "")
+            or (result.content[:500] if result.content else "")
+            or f"{mfg_name} {mfg_part_num}"
+        )
+        cached = llm_cache.get_classification(content_key)
+        if cached:
+            part_class = cached
             classify_source = "cache"
-            print(f"  Class   : {part_class}  (cached)")
+            print(f"  Class   : {part_class}  (cached - content)")
             if metrics:
                 metrics.record_cache_hit("classify")
 
-    # Fall back to LLM classification
+    # ── Tier 4: LLM Classify with Best Content (last resort) ────────────────
     if not part_class:
-        if part_name:
-            classify_text = part_name
-        elif file_result and file_result.content:
-            # Spec file content is more authoritative than web for classification
-            classify_text = file_result.content[:500]
-        elif result.content and len(result.content) >= 200:
-            classify_text = result.content[:500]
+        # Part name was already tried in Tier 0 if available — use content instead
+        if part_name_tried:
+            classify_text = (
+                (file_result.content[:500] if file_result and file_result.content else "")
+                or (result.content[:500] if result.content else "")
+                or f"{mfg_name} {mfg_part_num}"
+            )
         else:
-            classify_text = f"{mfg_name} {mfg_part_num}"
-
+            classify_text = (
+                part_name
+                or (file_result.content[:500] if file_result and file_result.content else "")
+                or (result.content[:500] if result.content else "")
+                or f"{mfg_name} {mfg_part_num}"
+            )
         part_class = await _retry_llm(
-            lambda: classifier.classify(classify_text),
-            "Classify"
-        )
-        if not part_class:
-            part_class = "Unclassified"
+            lambda: classifier.classify(classify_text), "Classify"
+        ) or "Unclassified"
         classify_source = "llm"
-        print(f"  Class   : {part_class}  (LLM)")
+        print(f"  Class   : {part_class}  (LLM - content)")
         if metrics:
             metrics.record_llm_call("classify")
-        # Cache the classification
         if llm_cache and part_class != "Unclassified":
             llm_cache.set_classification(classify_text, part_class)
+
+    # classify_content used by blind validation below (file preferred over web)
+    classify_content = (file_result.content if file_result and file_result.content
+                        else result.content)
 
     # Map classification to Classes.json hierarchy (strict Teamcenter alignment)
     original_class = part_class
