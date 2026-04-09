@@ -490,16 +490,6 @@ def normalize_attrs_with_lov_status(
         if not str_val:
             continue
 
-        # LOV normalization: class-scoped only (ID-resolved per class)
-        lov_values = class_lov.get(canonical)
-        if lov_values:
-            matched, ok = _fuzzy_match_lov(str_val, lov_values)
-            if ok:
-                str_val = matched
-            else:
-                # Record mismatch (keep original value in normalized too — per user request)
-                lov_mismatches[canonical] = str_val
-
         # Fraction → decimal conversion (preserve original if changed for TC attrs)
         original_before_frac = str_val
         str_val = fraction_to_decimal(str_val)
@@ -514,6 +504,17 @@ def normalize_attrs_with_lov_status(
 
         # Strip trailing UOM suffix — UOM lives in its own input column
         str_val = strip_unit_suffix(str_val, ATTR_DATATYPES.get(canonical))
+
+        # LOV normalization: class-scoped only (ID-resolved per class)
+        # Runs after all value conversions so mismatch is recorded with the final value
+        lov_values = class_lov.get(canonical)
+        if lov_values:
+            matched, ok = _fuzzy_match_lov(str_val, lov_values)
+            if ok:
+                str_val = matched
+            else:
+                # Record mismatch with the post-conversion value
+                lov_mismatches[canonical] = str_val
 
         normalized[canonical] = str_val
 
