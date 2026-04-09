@@ -16,6 +16,8 @@ PUBLIC API
 - CLASS_TREE_CHILDREN: dict[str, list[str]] — parent class name -> child class names
 - CLASS_LOV_MAP: dict[str, dict[str, list[str]]] — class name -> {canonical_attr_name -> [lov_values]}
                                        ID-resolved per class (correct LOV even when attr names clash globally)
+- CLASS_ATTR_META: dict[str, dict[str, dict]]   — class name -> {canonical_attr_name -> {type, unit, length, precision, case, sign}}
+                                       ID-resolved per class; only populated for attrs that have these fields in Attributes.json
 - ATTR_DICT: dict[str, dict]         — attr id -> full attribute record
 - get_schema(part_class) -> list[str]
 - get_tc_class_id(part_class) -> str
@@ -44,6 +46,7 @@ KNOWN_CLASSES: list[str] = []
 TC_CLASS_IDS: dict[str, str] = {}          # class_name -> Teamcenter class ID
 CLASS_SCHEMAS: dict[str, list[str]] = {}   # class_name -> [canonical attr names] (inherited)
 CLASS_LOV_MAP: dict[str, dict[str, list[str]]] = {}  # class_name -> {canonical_attr_name -> [lov_values]}
+CLASS_ATTR_META: dict[str, dict[str, dict]] = {}     # class_name -> {canonical_attr_name -> {type,unit,length,precision,case,sign}}
 ALIASES: dict[str, str] = {}               # lowercase alias -> canonical attr name
 CLASS_ALIASES: dict[str, str] = {}         # lowercase class alias -> canonical class name
 CLASS_TREE_CHILDREN: dict[str, list[str]] = {}  # parent name -> [child names]
@@ -57,8 +60,8 @@ _SCHEMA_SOURCE: str = "none"               # "json" or "none"
 
 def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
     """Load schema from Classes.json + Attributes.json."""
-    global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, CLASS_LOV_MAP, ALIASES, CLASS_ALIASES
-    global CLASS_TREE_CHILDREN, ATTR_DICT, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
+    global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, CLASS_LOV_MAP, CLASS_ATTR_META
+    global ALIASES, CLASS_ALIASES, CLASS_TREE_CHILDREN, ATTR_DICT, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
 
     # --- Load attributes ---
     with open(attrs_path, "r", encoding="utf-8") as f:
@@ -66,7 +69,10 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
 
     attr_by_id: dict[str, dict] = {}
     attr_name_by_id: dict[str, str] = {}
-    attr_lov_by_id: dict[str, list[str]] = {}   # id -> lov_values (for class-scoped lookup)
+    attr_lov_by_id: dict[str, list[str]] = {}    # id -> lov_values (for class-scoped lookup)
+    attr_meta_by_id: dict[str, dict] = {}        # id -> {type, unit, length, precision, case, sign}
+
+    _META_FIELDS = ("type", "unit", "length", "precision", "case", "sign")
 
     for attr in attrs_data.get("attributes", attrs_data.get("tree", [])):
         aid = str(attr["id"])
@@ -87,21 +93,24 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         if attr.get("lov"):
             attr_lov_by_id[aid] = attr["lov"]
 
-        # Populate ATTR_DATATYPES (optional field — supports float/string range averaging)
-        if attr.get("datatype"):
-            ATTR_DATATYPES[canonical] = attr["datatype"]
+        # Populate attr_meta_by_id with new type metadata fields (if present)
+        meta = {f: attr[f] for f in _META_FIELDS if attr.get(f) is not None}
+        if meta:
+            attr_meta_by_id[aid] = meta
 
     # --- Load classes ---
     with open(classes_path, "r", encoding="utf-8") as f:
         classes_data = json.load(f)
 
-    # Flatten the class tree, computing inherited attributes and class-scoped LOV maps
+    # Flatten the class tree, computing inherited attributes, LOV maps, and type metadata
     _flatten_tree(
         classes_data.get("tree", classes_data.get("classes", [])),
         inherited_attrs=[],
         attr_name_by_id=attr_name_by_id,
         inherited_lov_map={},
         attr_lov_by_id=attr_lov_by_id,
+        inherited_meta_map={},
+        attr_meta_by_id=attr_meta_by_id,
     )
 
     # Build default schema from common attributes
@@ -120,6 +129,8 @@ def _flatten_tree(
     attr_name_by_id: dict[str, str],
     inherited_lov_map: dict[str, list[str]],
     attr_lov_by_id: dict[str, list[str]],
+    inherited_meta_map: dict[str, dict],
+    attr_meta_by_id: dict[str, dict],
 ) -> None:
     """Recursively walk the class tree, populating module-level data.
 
@@ -127,9 +138,9 @@ def _flatten_tree(
     directly-assigned attributes. Only leaf and named intermediate classes
     are added to KNOWN_CLASSES.
 
-    CLASS_LOV_MAP is built using attr IDs from attributeslist to resolve the
-    CORRECT LOV list for each class — even when multiple attributes share the
-    same name globally. First-wins rule: parent LOV takes precedence over
+    CLASS_LOV_MAP and CLASS_ATTR_META are built using attr IDs from attributeslist
+    to resolve the CORRECT data per class — even when multiple attributes share the
+    same name globally. First-wins rule: parent definition takes precedence over
     child re-declarations of the same attribute name.
     """
     for node in nodes:
@@ -152,7 +163,6 @@ def _flatten_tree(
                 full_attrs.append(a)
 
         # Build class-scoped LOV map: start from inherited (first-wins — parent beats child)
-        # Only add LOV for attrs not already in the inherited map (first-wins rule)
         full_lov_map: dict[str, list[str]] = dict(inherited_lov_map)
         for aid in node.get("attributeslist", []):
             aname = attr_name_by_id.get(str(aid))
@@ -161,15 +171,21 @@ def _flatten_tree(
                 if lov:
                     full_lov_map[aname] = lov
 
+        # Build class-scoped type metadata map: start from inherited (first-wins)
+        full_meta_map: dict[str, dict] = dict(inherited_meta_map)
+        for aid in node.get("attributeslist", []):
+            aname = attr_name_by_id.get(str(aid))
+            if aname and aname not in full_meta_map:
+                meta = attr_meta_by_id.get(str(aid))
+                if meta:
+                    full_meta_map[aname] = meta
+
         # Register this class
         KNOWN_CLASSES.append(name)
         TC_CLASS_IDS[name] = class_id
-
-        # Schema = full inherited attribute list
         CLASS_SCHEMAS[name] = full_attrs
-
-        # Class-scoped LOV map (ID-resolved, inherited)
         CLASS_LOV_MAP[name] = full_lov_map
+        CLASS_ATTR_META[name] = full_meta_map
 
         # Class aliases
         for alias in aliases:
@@ -179,9 +195,13 @@ def _flatten_tree(
         if children:
             CLASS_TREE_CHILDREN[name] = [c["name"] for c in children]
 
-        # Recurse into children, passing accumulated attrs and LOV map
+        # Recurse into children, passing accumulated attrs, LOV map, and meta map
         if children:
-            _flatten_tree(children, full_attrs, attr_name_by_id, full_lov_map, attr_lov_by_id)
+            _flatten_tree(
+                children, full_attrs, attr_name_by_id,
+                full_lov_map, attr_lov_by_id,
+                full_meta_map, attr_meta_by_id,
+            )
 
 
 # ── Load schema on import ────────────────────────────────────────────────────
@@ -244,6 +264,28 @@ def _load_aliases_json() -> None:
 _load_schema()
 
 
+# ── Class-map lookup helper ──────────────────────────────────────────────────
+
+def _resolve_class_map(d: dict, part_class: str) -> dict:
+    """Fuzzy class key lookup: exact → case-insensitive → substring.
+
+    Used for CLASS_LOV_MAP, CLASS_ATTR_META, and any other class-keyed dict.
+    Returns empty dict when no match found.
+    """
+    if not part_class:
+        return {}
+    if part_class in d:
+        return d[part_class]
+    lower = part_class.lower()
+    for k, v in d.items():
+        if k.lower() == lower:
+            return v
+    for k, v in d.items():
+        if k.lower() in lower or lower in k.lower():
+            return v
+    return {}
+
+
 # ── LOV normalization helper ─────────────────────────────────────────────────
 
 def _normalize_key(s: str) -> str:
@@ -267,7 +309,7 @@ def _normalize_to_lov(value: str, lov_values: list[str]) -> str:
     return matched if matched is not None else value
 
 
-def _fuzzy_match_lov(value: str, lov_values: list[str]) -> tuple[str | None, bool]:
+def _fuzzy_match_lov(value: str, lov_values: list[str], case_sensitive: bool = False) -> tuple[str | None, bool]:
     """Try to match `value` to a LOV entry using cascading fuzzy strategies.
 
     Single-pass over lov_values: each LOV entry is tested against all 3
@@ -285,6 +327,10 @@ def _fuzzy_match_lov(value: str, lov_values: list[str]) -> tuple[str | None, boo
     """
     if not value or not lov_values:
         return (None, False)
+
+    # case_sensitive=True: exact string match only, no normalization
+    if case_sensitive:
+        return (value, True) if value in lov_values else (None, False)
 
     norm_val = _normalize_key(value)
     if not norm_val:
@@ -435,41 +481,32 @@ def schema_source() -> str:
 
 def normalize_attrs_with_lov_status(
     raw: dict, part_class: str
-) -> tuple[dict[str, str], dict[str, str]]:
-    """
-    1. Map raw LLM keys to TC attribute names via exact alias lookup.
-    2. LOV-normalize values where applicable (with improved fuzzy matching).
-    3. Range-average numeric attributes (if datatype is float/double/int).
-    4. Track LOV mismatches: values for LOV-governed attrs that didn't match any entry.
-    5. Order: TC schema attrs first, then unmatched LLM keys at the end.
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    """Normalize raw LLM-extracted attributes for the given part class.
+
+    Operation order per attribute:
+      1. Fraction → decimal conversion
+      2. Range averaging          (class-scoped type from CLASS_ATTR_META)
+      3. Strip unit suffix        (class-scoped type from CLASS_ATTR_META)
+      4. apply_precision          (float/double only; before LOV so LOV sees final value)
+      5. LOV normalization        (class-scoped; case_sensitive when attr.case == 1)
+      6. apply_length             (string: truncate + record original; numeric: log only)
+      7. apply_sign               (integer only; violated values are DROPPED with warning)
 
     Returns:
-        (ordered_attrs, lov_mismatches, range_originals)
-        ordered_attrs: dict[canonical_name, value] - the normalized attributes
-        lov_mismatches: dict[canonical_name, original_value] - LOV-governed attrs
-                        whose value did NOT match any LOV entry
-        range_originals: dict[canonical_name, original_range] - TC schema attrs
-                         whose range value was averaged (original preserved here)
+        (ordered_attrs, lov_mismatches, range_originals, fraction_originals)
     """
-    from src.range_handler import average_range, fraction_to_decimal, strip_unit_suffix
+    from src.range_handler import (
+        average_range, fraction_to_decimal, strip_unit_suffix,
+        apply_precision, apply_length, apply_sign, get_type_behavior,
+    )
 
     schema = get_schema(part_class)
     schema_set = set(schema)
 
-    # Resolve class-scoped LOV map using same fuzzy logic as get_schema
-    class_lov = CLASS_LOV_MAP.get(part_class, {})
-    if not class_lov:
-        # Fuzzy fallback: try case-insensitive then substring match
-        lower = part_class.lower()
-        for cls_key, lov_map in CLASS_LOV_MAP.items():
-            if cls_key.lower() == lower:
-                class_lov = lov_map
-                break
-        if not class_lov:
-            for cls_key, lov_map in CLASS_LOV_MAP.items():
-                if cls_key.lower() in lower or lower in cls_key.lower():
-                    class_lov = lov_map
-                    break
+    # Resolve class-scoped maps using shared fuzzy helper
+    class_lov = _resolve_class_map(CLASS_LOV_MAP, part_class)
+    class_attr_meta = _resolve_class_map(CLASS_ATTR_META, part_class)
 
     normalized: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
@@ -478,9 +515,7 @@ def normalize_attrs_with_lov_status(
 
     for k, v in raw.items():
         k_lower = k.strip().lower()
-        # Exact alias lookup (from Attributes.json name/shortname/aliases) or keep original
         canonical = ALIASES.get(k_lower) or k.strip()
-        # Match to schema casing
         for schema_key in schema:
             if schema_key.lower() == canonical.lower():
                 canonical = schema_key
@@ -490,31 +525,55 @@ def normalize_attrs_with_lov_status(
         if not str_val:
             continue
 
-        # Fraction → decimal conversion (preserve original if changed for TC attrs)
-        original_before_frac = str_val
-        str_val = fraction_to_decimal(str_val)
-        if str_val != original_before_frac and canonical in schema_set:
-            fraction_originals[canonical] = original_before_frac
+        # Get class-scoped type metadata for this attribute (ID-resolved, no global fallback)
+        attr_meta = class_attr_meta.get(canonical, {})
+        attr_type = attr_meta.get("type")
+        behavior = get_type_behavior(attr_type) if attr_type else {}
 
-        # Range averaging (for numeric attributes) — preserve original if changed
+        # Step 1: Fraction → decimal (only for types that support it)
+        if not attr_type or behavior.get("fraction_to_decimal", True):
+            original_before_frac = str_val
+            str_val = fraction_to_decimal(str_val)
+            if str_val != original_before_frac and canonical in schema_set:
+                fraction_originals[canonical] = original_before_frac
+
+        # Step 2: Range averaging (use class-scoped type, no global fallback)
         original_before_avg = str_val
-        str_val = average_range(str_val, ATTR_DATATYPES.get(canonical))
+        str_val = average_range(str_val, attr_type)
         if str_val != original_before_avg and canonical in schema_set:
             range_originals[canonical] = original_before_avg
 
-        # Strip trailing UOM suffix — UOM lives in its own input column
-        str_val = strip_unit_suffix(str_val, ATTR_DATATYPES.get(canonical))
+        # Step 3: Strip unit suffix (use class-scoped type)
+        str_val = strip_unit_suffix(str_val, attr_type)
 
-        # LOV normalization: class-scoped only (ID-resolved per class)
-        # Runs after all value conversions so mismatch is recorded with the final value
+        # Step 4: Apply precision (float/double only; before LOV so LOV sees rounded value)
+        if behavior.get("apply_precision") and attr_meta.get("precision") is not None:
+            str_val = apply_precision(str_val, attr_meta["precision"])
+
+        # Step 5: LOV normalization (class-scoped; respects case field)
         lov_values = class_lov.get(canonical)
         if lov_values:
-            matched, ok = _fuzzy_match_lov(str_val, lov_values)
+            case_sensitive = attr_meta.get("case", 0) == 1
+            matched, ok = _fuzzy_match_lov(str_val, lov_values, case_sensitive=case_sensitive)
             if ok:
                 str_val = matched
             else:
-                # Record mismatch with the post-conversion value
                 lov_mismatches[canonical] = str_val
+
+        # Step 6: Apply length (string: truncate; numeric: log only)
+        if attr_meta.get("length") is not None:
+            str_val, length_original = apply_length(str_val, attr_meta["length"], attr_type or "")
+            # For strings, record original if truncated (audit trail)
+            if length_original is not None and canonical in schema_set:
+                if canonical not in fraction_originals:
+                    fraction_originals[canonical] = length_original  # reuse fraction_originals slot
+
+        # Step 7: Apply sign (integer only; drop value if violated)
+        if behavior.get("apply_sign") and attr_meta.get("sign") is not None:
+            if not apply_sign(str_val, attr_meta["sign"]):
+                print(f"  [AttrType] Sign violation: '{canonical}' = '{str_val}' "
+                      f"(sign={attr_meta['sign']} requires {'non-negative' if attr_meta['sign'] == 0 else 'non-positive'}) — value dropped")
+                continue  # skip normalized[canonical] = str_val for this attr
 
         normalized[canonical] = str_val
 

@@ -1,7 +1,7 @@
 """Extract structured dimensions from raw product content using an LLM."""
 
 from src.llm_client import LLMClient
-from src.attr_schema import get_schema, normalize_attrs_with_lov_status
+from src.attr_schema import get_schema, normalize_attrs_with_lov_status, CLASS_ATTR_META, CLASS_LOV_MAP, _resolve_class_map
 import json
 import re
 
@@ -136,12 +136,29 @@ class AttributeExtractor:
         # Use only the unit-appropriate example (saves ~100 tokens)
         example = _example_json(unit_short)
 
-        # Build priority hints from schema (focus + breadth)
+        # Build priority hints from schema with type/unit/LOV context
         priority_line = ""
         if schema_attrs:
+            class_attr_meta = _resolve_class_map(CLASS_ATTR_META, part_class)
+            class_lov = _resolve_class_map(CLASS_LOV_MAP, part_class)
+            hints = []
+            for attr in schema_attrs:
+                meta = class_attr_meta.get(attr, {})
+                tags = []
+                if meta.get("type"):
+                    tags.append(meta["type"])
+                if meta.get("unit"):
+                    tags.append(meta["unit"])
+                if meta.get("precision") is not None:
+                    tags.append(f"≤{meta['precision']} decimals")
+                if meta.get("type") == "lov":
+                    lov_vals = class_lov.get(attr, [])
+                    if lov_vals:
+                        tags.append(f"LOV: {' | '.join(lov_vals[:10])}")
+                hints.append(f"{attr} [{', '.join(tags)}]" if tags else attr)
             priority_line = (
                 f"PRIORITY ATTRIBUTES (extract these first if present):\n"
-                f"  {', '.join(schema_attrs)}\n\n"
+                f"  {', '.join(hints)}\n\n"
             )
 
         raw = await self.llm.chat(
@@ -267,7 +284,7 @@ class AttributeExtractor:
         if not mismatches or len(mismatches) > 8:
             return {}
 
-        from src.attr_schema import CLASS_LOV_MAP
+        # CLASS_LOV_MAP and _resolve_class_map imported at module level
 
         # Build per-attr LOV options for only the mismatched attrs
         class_lov = CLASS_LOV_MAP.get(part_class, {})

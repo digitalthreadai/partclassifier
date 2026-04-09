@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "numeric_types": ["float", "double", "integer", "int", "number", "numeric", "real"],
+  "string_types": ["string", "text", "char", "varchar", "str", "lov"],
+  "type_behaviors": {
+    "float":   { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": true,  "apply_precision": true,  "apply_sign": false },
+    "double":  { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": true,  "apply_precision": true,  "apply_sign": false },
+    "integer": { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": false, "apply_precision": false, "apply_sign": true  },
+    "int":     { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": false, "apply_precision": false, "apply_sign": true  },
+    "number":  { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": true,  "apply_precision": false, "apply_sign": false },
+    "numeric": { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": true,  "apply_precision": false, "apply_sign": false },
+    "real":    { "average_range": true,  "strip_unit": true,  "fraction_to_decimal": true,  "apply_precision": true,  "apply_sign": false },
+    "string":  { "average_range": false, "strip_unit": false, "fraction_to_decimal": false, "apply_precision": false, "apply_sign": false },
+    "text":    { "average_range": false, "strip_unit": false, "fraction_to_decimal": false, "apply_precision": false, "apply_sign": false },
+    "char":    { "average_range": false, "strip_unit": false, "fraction_to_decimal": false, "apply_precision": false, "apply_sign": false },
+    "varchar": { "average_range": false, "strip_unit": false, "fraction_to_decimal": false, "apply_precision": false, "apply_sign": false },
+    "str":     { "average_range": false, "strip_unit": false, "fraction_to_decimal": false, "apply_precision": false, "apply_sign": false },
+    "lov":     { "average_range": false, "strip_unit": false, "fraction_to_decimal": false, "apply_precision": false, "apply_sign": false }
+  }
+}

@@ -9,7 +9,9 @@ For string-typed attributes or unknown types, ranges are preserved as-is unless
 the value is purely numeric (auto-detect fallback).
 """
 
+import json
 import re
+from pathlib import Path
 
 # Match: <num> [unit?] [to|-|–|—] <num> [unit?]
 # Allows:
@@ -24,8 +26,34 @@ _RANGE_RE = re.compile(
     r"([+-]?\d+\.?\d*)\s*([a-zA-Z%\"\u2032\u2033]*)\s*$"
 )
 
-_NUMERIC_TYPES = {"float", "double", "int", "integer", "number", "numeric", "real"}
-_STRING_TYPES = {"string", "text", "char", "varchar", "str"}
+# ── Type behavior config (loaded from schema/attr_type_rules.json) ────────────
+
+_TYPE_RULES_PATH = Path(__file__).parent.parent / "schema" / "attr_type_rules.json"
+
+
+def _load_type_rules() -> dict:
+    try:
+        with open(_TYPE_RULES_PATH, "r", encoding="utf-8") as f:
+            rules = json.load(f)
+        # Validate: every listed type should have a behavior entry
+        behaviors = rules.get("type_behaviors", {})
+        for t in rules.get("numeric_types", []) + rules.get("string_types", []):
+            if t not in behaviors:
+                print(f"[AttrTypeRules] WARNING: type '{t}' has no entry in type_behaviors")
+        return rules
+    except Exception as e:
+        print(f"[AttrTypeRules] WARNING: failed to load attr_type_rules.json: {e}. Using defaults.")
+        return {
+            "version": 0,
+            "numeric_types": ["float", "double", "int", "integer", "number", "numeric", "real"],
+            "string_types": ["string", "text", "char", "varchar", "str", "lov"],
+            "type_behaviors": {},
+        }
+
+
+_TYPE_RULES = _load_type_rules()
+_NUMERIC_TYPES: frozenset[str] = frozenset(t.lower() for t in _TYPE_RULES.get("numeric_types", []))
+_STRING_TYPES: frozenset[str] = frozenset(t.lower() for t in _TYPE_RULES.get("string_types", []))
 
 # ── Fraction → decimal ───────────────────────────────────────────────────────
 # Mixed number: "1-1/2" or "2 3/4". Whole separated from fraction by space or hyphen.
@@ -164,6 +192,72 @@ def parse_range(value: str) -> tuple[float, float, str] | None:
     # Prefer trailing unit, fall back to leading
     unit = (m.group(4) or m.group(2) or "").strip()
     return (low, high, unit)
+
+
+def get_type_behavior(type_name: str) -> dict:
+    """Return behavior config dict for the given type name from attr_type_rules.json.
+
+    Returns empty dict for unknown types — callers treat missing keys as False.
+    """
+    return _TYPE_RULES.get("type_behaviors", {}).get((type_name or "").lower(), {})
+
+
+def apply_precision(value: str, precision: int) -> str:
+    """Round a numeric string to given decimal places using Decimal ROUND_HALF_UP.
+
+    Requires that unit suffixes have already been stripped (strip_unit_suffix).
+    Non-numeric values returned unchanged. precision must be >= 0.
+    """
+    if precision < 0 or not value:
+        return value
+    try:
+        from decimal import Decimal, ROUND_HALF_UP
+        quantizer = Decimal(10) ** -precision
+        return str(Decimal(value).quantize(quantizer, rounding=ROUND_HALF_UP))
+    except Exception:
+        return value  # not a plain number — leave unchanged
+
+
+def apply_length(value: str, length: int, type_name: str) -> tuple[str, str | None]:
+    """Enforce max length constraint.
+
+    For string types: truncate to `length` characters and return original for audit.
+    For numeric types: log a warning but do NOT truncate (numeric length is informational).
+
+    Returns:
+        (result_value, original_if_truncated)  — original is None when unchanged.
+    """
+    if not value:
+        return value, None
+    type_lower = (type_name or "").lower()
+    if type_lower in _STRING_TYPES:
+        if len(value) > length:
+            print(f"[AttrType] String value truncated to length {length}: '{value[:40]}...'")
+            return value[:length], value
+    else:
+        if len(str(value)) > length:
+            print(f"[AttrType] WARNING: numeric value '{value}' exceeds declared length {length} — not truncated")
+    return value, None
+
+
+def apply_sign(value: str, sign: int) -> bool:
+    """Check sign constraint for integer attributes.
+
+    sign=0 → value must be non-negative (>= 0).
+    sign=1 → value must be non-positive (<= 0).
+
+    Returns True if constraint satisfied (or value is non-numeric), False if violated.
+    Violated values should be DROPPED by the caller, not silently modified.
+    """
+    try:
+        n = float(value)
+        if sign == 0 and n < 0:
+            return False  # positive required, negative found → violated
+        if sign == 1 and n > 0:
+            return False  # negative required, positive found → violated
+        return True
+    except (ValueError, TypeError):
+        return True  # non-numeric: not applicable, don't drop
 
 
 def average_range(value: str, datatype: str | None = None) -> str:
