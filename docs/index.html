@@ -60,7 +60,7 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
 <body>
 <div class="hub-container">
   <div class="hero">
-    <div class="tag">v2.0 &middot; Python 3.11+ &middot; 7,031 LOC</div>
+    <div class="tag">v3.0 &middot; Python 3.11+ &middot; ~8,400 LOC</div>
     <h1>PartClassifier</h1>
     <p>Production-grade AI agent for mechanical part classification. Reads Excel input, searches distributor APIs and the web, then runs a classify &rarr; blind-extract &rarr; validate &rarr; extract pipeline across 93 part classes. Schema-driven attribute fitting ensures only valid attributes per class, with per-class Excel output and TC Class ID for Teamcenter PLM import.</p>
     <div class="hero-links">
@@ -70,6 +70,12 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
   </div>
 
   <div class="cards">
+    <div class="card">
+      <div class="card-icon">&#128203;</div>
+      <h3>Change History</h3>
+      <p>Every medium, high, and critical impact commit — from initial release through type-aware attribute normalization, class-scoped LOV, and post-processor rewrite.</p>
+      <a href="CHANGELOG.html" class="link">View Changes</a>
+    </div>
     <div class="card">
       <div class="card-icon">&#128214;</div>
       <h3>Project Overview</h3>
@@ -97,10 +103,10 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
     <div class="stat"><div class="num">9</div><div class="label">LLM Providers</div></div>
     <div class="stat"><div class="num">3</div><div class="label">Distributor APIs</div></div>
     <div class="stat"><div class="num">46</div><div class="label">Attributes</div></div>
-    <div class="stat"><div class="num">18</div><div class="label">Source Modules</div></div>
+    <div class="stat"><div class="num">20</div><div class="label">Source Modules</div></div>
     <div class="stat"><div class="num">95%</div><div class="label">Classification Accuracy</div></div>
     <div class="stat"><div class="num">3</div><div class="label">Execution Modes</div></div>
-    <div class="stat"><div class="num">7,031</div><div class="label">Lines of Code</div></div>
+    <div class="stat"><div class="num">~8,400</div><div class="label">Lines of Code</div></div>
     <div class="stat"><div class="num">PLMXML</div><div class="label">Import Converter</div></div>
   </div>
 
@@ -134,10 +140,11 @@ footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;b
     <div class="tech-item"><span class="dot green"></span>openpyxl (Excel I/O)</div>
     <div class="tech-item"><span class="dot purple"></span>Streamlit (Web UI)</div>
     <div class="tech-item"><span class="dot green"></span>python-dotenv</div>
+    <div class="tech-item"><span class="dot purple"></span>attr_type_rules.json (type normalization)</div>
   </div>
 
   <h2 class="section-title">Pipeline Steps</h2>
-  <p class="section-sub">Six-step pipeline from Excel input to classified output with TC Class ID.</p>
+  <p class="section-sub">Eight-step pipeline from Excel input to classified output with TC Class ID.</p>
   <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
     <div class="card" style="padding:20px 24px">
       <h3 style="font-size:1rem;color:var(--accent)">1. Multi-Tier Search</h3>

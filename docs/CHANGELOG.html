@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Change History — PartClassifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a2e;--bg4:#22223a;
+  --accent:#6c63ff;--accent2:#00d4aa;
+  --text:#e8e8ed;--muted:#8888a0;--border:#2a2a3e;
+  --code-bg:#161625;--radius:10px;--shadow:0 4px 24px rgba(0,0,0,0.4);
+  --crit:#ef4444;--high:#f97316;--med:#3b82f6;
+  --crit-bg:rgba(239,68,68,.12);--high-bg:rgba(249,115,22,.12);--med-bg:rgba(59,130,246,.12);
+}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+a{color:var(--accent);text-decoration:none;transition:color .2s}
+a:hover{color:var(--accent2)}
+
+/* ── Nav ── */
+.topnav{width:100%;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 30px;display:flex;align-items:center;height:52px;position:sticky;top:0;z-index:100}
+.topnav .back{display:inline-flex;align-items:center;gap:8px;font-size:.9rem;font-weight:500;color:var(--muted)}
+.topnav .back:hover{color:var(--accent2)}
+.topnav .back::before{content:'←';font-size:1rem}
+.topnav .breadcrumb{margin-left:16px;padding-left:16px;border-left:1px solid var(--border);color:var(--muted);font-size:.85rem}
+
+/* ── Layout ── */
+.page{max-width:900px;width:100%;padding:0 30px 80px}
+
+/* ── Hero ── */
+.hero{text-align:center;padding:70px 20px 50px}
+.hero .tag{display:inline-block;background:var(--bg3);color:var(--accent2);font-family:'JetBrains Mono',monospace;font-size:.82rem;padding:4px 14px;border-radius:20px;margin-bottom:20px;letter-spacing:.03em}
+.hero h1{font-size:2.6rem;font-weight:700;margin-bottom:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:var(--muted);font-size:1.05rem;max-width:640px;margin:0 auto 36px}
+
+/* ── Stats row ── */
+.stats{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:50px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 28px;text-align:center;min-width:130px}
+.stat .num{font-size:1.9rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1.1}
+.stat .num.crit{background:none;-webkit-text-fill-color:var(--crit);color:var(--crit)}
+.stat .num.high{background:none;-webkit-text-fill-color:var(--high);color:var(--high)}
+.stat .num.med{background:none;-webkit-text-fill-color:var(--med);color:var(--med)}
+.stat .label{color:var(--muted);font-size:.8rem;margin-top:4px;text-transform:uppercase;letter-spacing:.05em}
+
+/* ── Legend ── */
+.legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:56px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:500;padding:2px 9px;border-radius:4px;letter-spacing:.04em;white-space:nowrap}
+.badge.crit{background:var(--crit-bg);color:var(--crit);border:1px solid rgba(239,68,68,.3)}
+.badge.high{background:var(--high-bg);color:var(--high);border:1px solid rgba(249,115,22,.3)}
+.badge.med{background:var(--med-bg);color:var(--med);border:1px solid rgba(59,130,246,.3)}
+
+/* ── Period dividers ── */
+.period{display:flex;align-items:center;gap:16px;margin:48px 0 28px}
+.period-label{font-size:.78rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.period-line{flex:1;height:1px;background:var(--border)}
+
+/* ── Entry cards ── */
+.entry{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:12px;position:relative;overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.entry::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:2px 0 0 2px}
+.entry.crit::before{background:var(--crit)}
+.entry.high::before{background:var(--high)}
+.entry.med::before{background:var(--med)}
+.entry:hover{border-color:var(--bg4);box-shadow:var(--shadow)}
+
+.entry-header{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px}
+.entry-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hash{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--muted);background:var(--bg3);padding:2px 8px;border-radius:4px;border:1px solid var(--border)}
+.entry-date{font-size:.8rem;color:var(--muted)}
+.sep{color:var(--border);font-size:.8rem}
+
+.entry-title{font-size:1rem;font-weight:600;color:var(--text);margin-bottom:6px}
+.entry-why{font-size:.88rem;color:var(--muted);line-height:1.6}
+.entry-why strong{color:var(--text);font-weight:500}
+
+/* ── Footer ── */
+.site-footer{text-align:center;padding:40px 20px;color:var(--muted);font-size:.83rem;border-top:1px solid var(--border);width:100%;max-width:900px;margin-top:20px}
+.site-footer a{color:var(--muted)}
+.site-footer a:hover{color:var(--accent2)}
+
+/* ── Responsive ── */
+@media(max-width:600px){
+  .hero h1{font-size:1.9rem}
+  .stats{gap:10px}
+  .stat{padding:16px 18px;min-width:100px}
+  .entry{padding:16px 18px}
+  .entry::before{width:2px}
+  .topnav .breadcrumb{display:none}
+  .period{margin:36px 0 20px}
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="topnav" style="position:sticky">
+  <a href="index.html" class="back">Back to Docs</a>
+  <span class="breadcrumb">PartClassifier / Change History</span>
+</nav>
+
+<div class="page">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Development History &middot; classify &rarr; extract &rarr; validate</div>
+    <h1>Change History</h1>
+    <p>A record of every meaningful improvement to the PartClassifier pipeline — from initial prototype to production-grade Teamcenter integration.</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="num">33</div>
+      <div class="label">Commits shown</div>
+    </div>
+    <div class="stat">
+      <div class="num crit">12</div>
+      <div class="label">Critical</div>
+    </div>
+    <div class="stat">
+      <div class="num high">13</div>
+      <div class="label">High</div>
+    </div>
+    <div class="stat">
+      <div class="num med">8</div>
+      <div class="label">Medium</div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><span class="badge crit">CRITICAL</span> Pipeline-breaking or PLM-correctness change</div>
+    <div class="legend-item"><span class="badge high">HIGH</span> Significant feature or reliability improvement</div>
+    <div class="legend-item"><span class="badge med">MEDIUM</span> Bug fix, refactor, or targeted correctness patch</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ April 2026 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">April 2026</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">171f69c</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Apr 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Add Unit of Measure (Agent) TC column to output Excel</div>
+    <div class="entry-why"><strong>Why:</strong> Teamcenter import requires a UOM value per row. The agent now infers and outputs UOM as a navy-blue TC column, enabling direct PLM ingestion without manual data entry.</div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">0877a37</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Apr 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Attribute type metadata — unit, type, length, precision, case, sign</div>
+    <div class="entry-why"><strong>Why:</strong> Enables TC datatype-aware normalization: float precision rounding, sign validation, string length truncation, and case-sensitive LOV matching — all driven by the Attributes.json schema rather than hardcoded rules.</div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">2e0a6a0</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Apr 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Fix: LOV mismatch recorded with post-conversion value</div>
+    <div class="entry-why"><strong>Why:</strong> The mismatch column was showing the pre-conversion value (e.g., <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--accent2)">1/4 in</code>) instead of the normalized value (<code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--accent2)">0.25</code>) — broke audit traceability for TC QA review.</div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">ad04e20</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Apr 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Rewrite post-processor with per-part dedup + agent-vs-TC deletion</div>
+    <div class="entry-why"><strong>Why:</strong> Previous cross-part deduplication was logically incorrect. Rewritten as Phase A (agent-vs-TC delete) and Phase B (agent-vs-agent merge), both strictly scoped per-part to prevent data bleed between rows.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ March 2026 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">March 2026</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">c42a714</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Mar 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Remove global LOV_MAP — strict class-scoped LOV only via CLASS_LOV_MAP</div>
+    <div class="entry-why"><strong>Why:</strong> The global LOV fallback accepted attribute values for the wrong class. Every LOV lookup is now class + attribute-ID scoped, eliminating cross-class value contamination.</div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">d069c65</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Mar 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Part Name web validation, UOM inference, fraction→decimal, unit stripping</div>
+    <div class="entry-why"><strong>Why:</strong> Multi-signal reliability pass: validates classification via web content, infers UOM from part specs, converts fractional inch values to decimals, and strips trailing unit suffixes from numeric extracted values.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">2803c2d</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Mar 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">LOV LLM augmentation, agent dedup, classification fix</div>
+    <div class="entry-why"><strong>Why:</strong> Semantic LOV resolution via LLM handles abbreviations and alternate spellings. Post-processor dedup removes redundant agent columns and a classification edge case was corrected.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">49bce02</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Mar 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Validate Part Name classification against final extracted attrs</div>
+    <div class="entry-why"><strong>Why:</strong> Option B validation re-validates the assigned class after attribute extraction to catch misclassifications caused by ambiguous or abbreviated part names.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">8ad1fa7</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Mar 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Part Name is highest priority for classification</div>
+    <div class="entry-why"><strong>Why:</strong> The part name field carries the most reliable deterministic signal. Promoting it to highest priority improved classification accuracy for unambiguous parts and reduced unnecessary web lookups.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ February 2026 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">February 2026</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">40a55e2</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Feb 2026</span>
+      </div>
+    </div>
+    <div class="entry-title">Range original value columns + file extraction method tracking</div>
+    <div class="entry-why"><strong>Why:</strong> Audit columns now preserve pre-averaged range values and record whether data originated from web scraping, PDF parsing, or part-name inference — essential for TC QA sign-off traceability.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ December 2025 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">December 2025</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">31af282</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Dec 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">ID-based class-scoped LOV lookup via CLASS_LOV_MAP</div>
+    <div class="entry-why"><strong>Why:</strong> Replaced name-based global LOV with Teamcenter attribute-ID resolved, class-scoped LOV map — ensures the correct list-of-values is applied per class for identically-named attributes across different part classes.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">b27b4ac</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Dec 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Flexible spec file matching — substring search</div>
+    <div class="entry-why"><strong>Why:</strong> Spec PDFs and data files are now matched by substring rather than exact filename, handling manufacturer variant naming and revision suffixes that previously caused missed lookups.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">031c246</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Dec 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Scope LOV mismatch columns to TC schema per class</div>
+    <div class="entry-why"><strong>Why:</strong> LOV mismatch audit columns were appearing for attributes that don't belong to the current class. Columns are now strictly scoped to the per-class TC attribute schema.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ November 2025 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">November 2025</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">452960d</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Nov 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Rearchitect classification with attribute-fit validation</div>
+    <div class="entry-why"><strong>Why:</strong> Introduced the two-pass pipeline: classify → blind-extract → validate classification fits extracted attributes → re-extract class-aware. Eliminated wrong-class attribute writes that were silently corrupting TC output.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">e9965d3</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Nov 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">LOV matching, file search, range averaging</div>
+    <div class="entry-why"><strong>Why:</strong> RapidFuzz-powered LOV normalization tolerates minor spelling differences. Expanded spec file search and numeric range averaging prepare values for direct TC attribute import.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">3c9ea72</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Nov 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Extraction coverage, confidence metrics, HTML summary report</div>
+    <div class="entry-why"><strong>Why:</strong> Per-run HTML executive summary now reports coverage %, LOV compliance %, per-attribute confidence scores, and color-coded Excel quality columns for rapid QA review.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">e1e8ca0</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Nov 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Fix: _retry_missing returned tuple instead of dict</div>
+    <div class="entry-why"><strong>Why:</strong> Silent bug in the retry path caused an AttributeError for parts where the first extraction pass missed more than 50% of schema attributes. Affected rows produced empty output with no error message.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">0ed5028</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Nov 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Sanitize Excel sheet title for invalid characters</div>
+    <div class="entry-why"><strong>Why:</strong> Excel sheet names containing <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--accent2)">/ \ * ? : [ ]</code> caused openpyxl to crash for certain class names during output file generation.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">8591dc6</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Nov 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Code simplification refactor</div>
+    <div class="entry-why"><strong>Why:</strong> Removed dead code and consolidated duplicate logic accumulated across rapid feature iterations. No functionality change; improves maintainability and reduces onboarding time.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ October 2025 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">October 2025</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">c8b8222</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Oct 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Production-ready pipeline: hybrid extraction, Excel schema, 21 bug fixes</div>
+    <div class="entry-why"><strong>Why:</strong> Comprehensive hardening milestone: hybrid LLM+regex extraction, Excel-driven schema loading, and 21 correctness and reliability fixes that moved the pipeline from prototype to production-ready state.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">f994fce</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Oct 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">PLMXML to JSON converter for Teamcenter import</div>
+    <div class="entry-why"><strong>Why:</strong> Converts Teamcenter's PLMXML classification export directly to the internal JSON schema format, eliminating manual schema transcription and enabling rapid onboarding of new TC classification trees.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">c08cce2</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Oct 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Teamcenter-compatible JSON schema (class tree + attribute dictionary)</div>
+    <div class="entry-why"><strong>Why:</strong> Replaced the Excel-based schema with a TC-native JSON format (Classes.json + Attributes.json) for direct PLM alignment, enabling the pipeline to stay in sync with the TC classification hierarchy.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ September 2025 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">September 2025</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">c2d592c</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">CloakBrowser stealth scraping + DigiKey/Mouser/McMaster distributor APIs</div>
+    <div class="entry-why"><strong>Why:</strong> Added three distributor REST APIs and a Chrome-fingerprint stealth browser for paywalled and bot-protected pages. Dramatically improved spec coverage for mechanical and electronic parts with restricted data access.</div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">cb94d35</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Claude Code CLI mode — zero-API-key classification</div>
+    <div class="entry-why"><strong>Why:</strong> Enables running the full pipeline via Claude Code CLI without any API key configuration, using Claude's built-in tool-use. Removes the setup barrier for new environments and air-gapped enterprise deployments.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">537f9e8</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">aliases.json system + attribute normalization</div>
+    <div class="entry-why"><strong>Why:</strong> Auto-generated aliases map variant attribute names from different data sources to canonical names, enabling consistent column output regardless of how each distributor or datasheet labels a given attribute.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">41841aa</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Single-value enforcement, part name fallback, color-coded Excel</div>
+    <div class="entry-why"><strong>Why:</strong> Prevents comma-separated value lists in single-value TC attributes. Falls back to part name extraction when web scraping fails. Excel output columns are now color-coded by data type for at-a-glance quality review.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">547a528</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Azure AI Foundry as first-class LLM provider</div>
+    <div class="entry-why"><strong>Why:</strong> Adds support for Azure-hosted OpenAI and Anthropic models, enabling enterprise deployments where cloud-direct API access is restricted by network or data residency policy.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">626e8fd</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Fresh browser context per scrape + manufacturer rotation</div>
+    <div class="entry-why"><strong>Why:</strong> Prevents browser fingerprint detection by resetting the browser context between scrape requests. Rotates manufacturer name variants in search queries to improve hit rate on distributor search indexes.</div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">d56df04</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Enterprise LLM providers, fuzzy column matching, electronic parts</div>
+    <div class="entry-why"><strong>Why:</strong> Adds AWS Bedrock, Azure, and custom endpoint support; fuzzy Excel column header matching handles input files with non-standard column names; extends the class schema to cover electronic part categories.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">9526e28</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">--fresh flag, simplified alias logic, unit conversion fix</div>
+    <div class="entry-why"><strong>Why:</strong> <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--accent2)">--fresh</code> flag bypasses cached scrape results for re-runs. Cleaner alias deduplication logic. Fixed a precision error in inch-to-mm conversion affecting sub-millimeter attributes.</div>
+  </div>
+
+  <div class="entry med">
+    <div class="entry-header">
+      <span class="badge med">MEDIUM</span>
+      <div class="entry-meta">
+        <span class="hash">96d8da7</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Sep 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Adaptive domain-independent search</div>
+    <div class="entry-why"><strong>Why:</strong> Search strategy adapts to part category rather than targeting a fixed set of distributor domains. Significantly improves spec coverage for niche, specialty, and industrial parts not stocked by major distributors.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════ August 2025 ════ -->
+  <div class="period">
+    <div class="period-line"></div>
+    <div class="period-label">August 2025</div>
+    <div class="period-line"></div>
+  </div>
+
+  <div class="entry high">
+    <div class="entry-header">
+      <span class="badge high">HIGH</span>
+      <div class="entry-meta">
+        <span class="hash">5cead8e</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Aug 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Web-based classification, benchmark suite, prompt optimization</div>
+    <div class="entry-why"><strong>Why:</strong> Classifies parts from scraped web content rather than part name string alone. Adds a benchmarking framework for systematic prompt tuning and regression testing across part classes.</div>
+  </div>
+
+  <div class="entry crit">
+    <div class="entry-header">
+      <span class="badge crit">CRITICAL</span>
+      <div class="entry-meta">
+        <span class="hash">e4efdd7</span>
+        <span class="sep">&middot;</span>
+        <span class="entry-date">Aug 2025</span>
+      </div>
+    </div>
+    <div class="entry-title">Initial release</div>
+    <div class="entry-why"><strong>Why:</strong> First working version of the classify &rarr; scrape &rarr; extract &rarr; write pipeline. Established the core architecture that all subsequent improvements build on.</div>
+  </div>
+
+</div><!-- /page -->
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div style="margin-bottom:10px">
+    <a href="index.html">&larr; Back to Documentation Hub</a>
+  </div>
+  <div>Built by Anbarasu M &middot; <a href="https://digitalthread.ai" target="_blank">digitalthread.ai</a></div>
+</footer>
+
+</body>
+</html>

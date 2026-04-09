@@ -572,9 +572,8 @@ def write_env(provider: str, api_key: str, model: str):
     env["LLM_API_KEY"] = api_key
     env["LLM_MODEL"] = model
     env.pop("GROQ_API_KEY", None)
-
-    lines = [f"{k}={v}" for k, v in env.items()]
-    ENV_PATH.write_text("\n".join(lines) + "\n")
+    # Preserve POST_PROCESS_DEDUP and any other vars
+    ENV_PATH.write_text("\n".join(f"{k}={v}" for k, v in env.items()) + "\n")
 
     os.environ["LLM_PROVIDER"] = provider
     os.environ["LLM_API_KEY"] = api_key
@@ -641,6 +640,7 @@ async def run_classification(input_path: str, output_dir: str, progress_callback
                     "source_url": result["source_url"] or "part name",
                     "attr_count": len(result["attributes"]),
                     "attributes": result["attributes"],
+                    "unit_of_measure": result.get("unit_of_measure", ""),
                 })
 
     written = handler.write_class_files(results)
@@ -767,6 +767,23 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
+    # Processing options
+    st.markdown('<hr style="margin:8px 0;border-color:rgba(148,163,184,0.15);">', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Processing Options</div>', unsafe_allow_html=True)
+
+    dedup_enabled = env.get("POST_PROCESS_DEDUP", "false").lower() == "true"
+    new_dedup = st.checkbox(
+        "Post-process dedup",
+        value=dedup_enabled,
+        help="Phase A: delete agent columns that duplicate TC values. Phase B: merge duplicate agent columns per part.",
+    )
+    if new_dedup != dedup_enabled:
+        env2 = read_env()
+        env2["POST_PROCESS_DEDUP"] = "true" if new_dedup else "false"
+        ENV_PATH.write_text("\n".join(f"{k}={v}" for k, v in env2.items()) + "\n")
+        os.environ["POST_PROCESS_DEDUP"] = "true" if new_dedup else "false"
+        st.rerun()
+
 
 # -- Main Area -------------------------------------------------------------
 
@@ -775,7 +792,7 @@ st.markdown("""
 <div class="hero-banner">
     <p class="hero-title">Part Classification Agent</p>
     <p class="hero-subtitle">Classify mechanical parts, scrape specifications from the web, and generate structured Excel output -- powered by AI.</p>
-    <div class="hero-badge">&#9889; Supports Groq, OpenAI, Claude, Ollama</div>
+    <div class="hero-badge">&#9889; Groq &middot; OpenAI &middot; Claude &middot; Ollama &nbsp;&bull;&nbsp; &#128202; Type-aware attribute normalization</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -856,6 +873,39 @@ if selected_file:
 
     with st.expander(f"Preview input data ({len(rows)} rows)", expanded=False):
         st.dataframe(rows, use_container_width=True, hide_index=True)
+
+# Schema Explorer
+with st.expander("&#128202; Schema Explorer — Attribute Type Metadata", expanded=False):
+    try:
+        from src.attr_schema import CLASS_ATTR_META, CLASS_LOV_MAP, _resolve_class_map
+        all_classes = sorted(CLASS_ATTR_META.keys())
+        if all_classes:
+            sel_class = st.selectbox("Select Part Class", all_classes, key="schema_class_sel")
+            meta = _resolve_class_map(CLASS_ATTR_META, sel_class)
+            lov = _resolve_class_map(CLASS_LOV_MAP, sel_class)
+            if meta:
+                import pandas as pd
+                rows = []
+                for attr, m in sorted(meta.items()):
+                    lov_vals = lov.get(attr, [])
+                    rows.append({
+                        "Attribute": attr,
+                        "Type": m.get("type", ""),
+                        "Unit": m.get("unit", ""),
+                        "Precision": str(m["precision"]) if m.get("precision") is not None else "",
+                        "Length": str(m["length"]) if m.get("length") is not None else "",
+                        "Case": "sensitive" if m.get("case") == 1 else "insensitive" if "case" in m else "",
+                        "Sign": "positive only" if m.get("sign") == 0 else ("negative only" if m.get("sign") == 1 else ""),
+                        "LOV Options": len(lov_vals),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.caption(f"{len(meta)} attributes with type metadata defined for {sel_class}")
+            else:
+                st.info(f"No type metadata defined for **{sel_class}** yet. Add `type`, `unit`, `precision` fields to Attributes.json.")
+        else:
+            st.info("Schema not loaded. Ensure `schema/Attributes.json` and `schema/Classes.json` are present.")
+    except Exception as _schema_err:
+        st.warning(f"Schema Explorer unavailable: {_schema_err}")
 
 # Run button
 run_clicked = st.button(
@@ -968,10 +1018,11 @@ if run_clicked:
                 f"{pr['part_num']}  |  {pr['part_class']}  |  {pr['attr_count']} attributes",
                 expanded=False,
             ):
-                c1, c2, c3 = st.columns(3)
+                c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Part Class", pr["part_class"])
                 c2.metric("Attributes", pr["attr_count"])
-                c3.metric("Source", "Web" if pr["source_url"] != "part name" else "Part Name")
+                c3.metric("UOM", pr.get("unit_of_measure") or "—")
+                c4.metric("Source", "Web" if pr["source_url"] != "part name" else "Part Name")
 
                 if pr["source_url"] and pr["source_url"] != "part name":
                     st.caption(f"Source: {pr['source_url']}")

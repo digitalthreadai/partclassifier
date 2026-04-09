@@ -200,7 +200,55 @@ The Claude Code CLI mode (`main_cc.py`) uses the `claude` CLI on PATH and needs 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POST_PROCESS_DEDUP` | `false` | Set to `true` to enable post-processing deduplication of agent-extracted columns via LLM. Merges columns only when values are identical across all overlapping parts AND LLM confirms semantic equivalence. Transitive chains resolved (A→B, B→C both collapse to A). Pre/post Excel files written side-by-side for comparison. Adds latency; useful for large batches with overlapping agent-extracted attrs. |
+| `POST_PROCESS_DEDUP` | `false` | Set to `true` to enable post-processing deduplication of agent-extracted columns. Per-part Phase A removes an agent column when it exactly matches a TC schema value for the same part. Phase B merges two agent columns when they match each other on the same part and an LLM confirms semantic equivalence. All deduplication is confined to the same part row — no cross-part merging. Pre/post Excel files written side-by-side for comparison. Adds latency; useful for large batches with overlapping agent-extracted attrs. |
+
+---
+
+## Attribute Type Metadata
+
+Each attribute in `schema/Attributes.json` now carries six additional fields that drive type-aware normalization:
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `type` | `float`, `integer`, `string`, `lov` | Teamcenter datatype for this attribute |
+| `unit` | `mm`, `in`, `deg`, etc. | Expected unit of measure |
+| `length` | integer | Max character count (strings) or max digits (numeric) |
+| `precision` | integer | Decimal places to round to (float only) |
+| `case` | `0`, `1` | LOV case sensitivity: 0 = case-insensitive, 1 = case-sensitive |
+| `sign` | `0`, `1` | Sign constraint: 0 = positive only, 1 = negative only |
+
+### attr_type_rules.json
+
+`schema/attr_type_rules.json` configures which normalization operations apply to each Python type. Each type entry lists the operations that are enabled for it:
+
+```json
+{
+  "type_behaviors": {
+    "float":   ["fraction_to_decimal", "average_range", "strip_unit", "apply_precision", "apply_sign"],
+    "integer": ["fraction_to_decimal", "average_range", "strip_unit", "apply_sign"],
+    "string":  ["apply_length"],
+    "lov":     ["strip_unit", "lov_match", "apply_length"]
+  }
+}
+```
+
+To add a new type, append an entry to `type_behaviors` with the list of operations that should apply.
+
+### CLASS_ATTR_META
+
+The `CLASS_ATTR_META` dictionary in `src/attr_schema.py` stores per-class type metadata, keyed by `(class_name, attr_name)`. It is populated directly from `Attributes.json` at schema load time. There is no global fallback — if an attribute is not defined in the schema for a class, normalization skips type-specific steps for that attribute.
+
+### 7-Step Normalization Order
+
+For each extracted attribute value, normalization runs in this order:
+
+1. **fraction → decimal** — converts "13/64\"" to "0.203", "1-1/2\"" to "1.5"; date/version strings are guarded
+2. **range average** — averages "3.8 to 4.2 mm" to "3.95", original preserved in companion column
+3. **strip unit** — removes trailing UOM suffix from numeric values ("0.23 inches" → "0.23")
+4. **apply_precision** — rounds float values to the attribute's declared decimal places (runs before LOV matching so the candidate is already normalized)
+5. **LOV match** — RapidFuzz string match against class-scoped LOV; LLM semantic fallback if fuzzy match fails
+6. **apply_length** — truncates to max character/digit length
+7. **apply_sign** — rejects or flags values that violate the sign constraint
 
 ---
 
@@ -300,7 +348,10 @@ Each output Excel contains:
   - `Validation Action` -- Confirmed / Reclassified / Abstained
 - **`<Attr>-Original-RANGE-Value` columns** (steel blue header) -- original range string before averaging (e.g., "3.8 to 4.2 mm" alongside averaged "3.95")
 - **`<Attr>-Original-FRACTION-Value` columns** (amber header) -- original fraction before decimal conversion (e.g., "13/64\"" alongside "0.203")
+- **`Unit of Measure (Agent)` column** (navy blue TC header) -- when the input UOM is blank, the agent infers the unit from extracted specs and writes it here; populated for all parts where UOM was auto-detected
 - Agent-extracted columns (attrs found outside the TC schema, not class-scoped)
+
+**LOV mismatch columns:** The `<Attr>-NotPresentInLOV` companion column records the post-conversion value (e.g., "0.25") rather than the pre-conversion raw string (e.g., "1/4 in"), so the value shown is what was actually tested against the LOV list.
 
 ```
 output/
@@ -324,8 +375,9 @@ output/
 - **Regex + LLM agreement tracking:** measures extraction confidence
 - **Hybrid extraction prompt:** priority schema hints + maximize coverage
 - **Canonical normalization:** 500+ alias mappings ensure consistent columns
-- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and class-scoped LOV normalization (CLASS_LOV_MAP)
+- **JSON-based schema:** 93 classes, 46 attrs in `Classes.json` + `Attributes.json` with Teamcenter-compatible IDs, attribute inheritance, and class-scoped LOV normalization (CLASS_LOV_MAP — strictly class-scoped, no global fallback; LOV compliance % always reflects the actual class LOV list)
 - **LOV normalization:** RapidFuzz string matching → LLM semantic fallback (batched, validated against LOV list before acceptance)
+- **Type-aware normalization:** precision rounding, sign validation, and length truncation applied per Teamcenter attribute datatype, driven by `schema/attr_type_rules.json` and per-class `CLASS_ATTR_META`
 - **Fraction → decimal:** "13/64\"" → "0.203\"", "1-1/2\"" → "1.5\"", works inside ranges; date/version strings guarded
 - **Unit suffix stripping:** Numeric attribute values strip trailing UOM ("0.23 inches" → "0.23"); datatype-aware to protect strings
 - **Range original preservation:** Original range string retained in companion column when averaged
@@ -379,7 +431,8 @@ PartClassifier/
 │   └── PartClassifierInput.xlsx       # Sample input
 ├── schema/
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree, Teamcenter classids
-│   ├── Attributes.json                # JSON schema: 46 attributes, numeric IDs, LOV values, ranges
+│   ├── Attributes.json                # JSON schema: 46 attributes, numeric IDs, LOV values, ranges, type metadata (type/unit/length/precision/case/sign)
+│   ├── attr_type_rules.json           # Per-Python-type normalization operation list (fraction_to_decimal, average_range, strip_unit, apply_precision, lov_match, apply_length, apply_sign)
 │   ├── aliases.json                   # Auto-generated alias mappings (attribute + class aliases)
 │   └── classification_hints.json      # Part-name keyword → class mappings for validation
 ├── output/                    # One .xlsx per part class (with TC Class ID)
