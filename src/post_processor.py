@@ -4,11 +4,14 @@ Post-processing: deduplicate agent-extracted columns using LLM semantic matching
 Runs AFTER all parts are processed, BEFORE writing post-processing output files.
 Only operates on agent-extra columns (not TC schema columns).
 
-Deduplication requires BOTH conditions (AND — not OR):
-  1. Values are identical across ALL parts where both columns are populated
-  2. Column names are semantically equivalent (confirmed by LLM)
+Two-phase per-part deduplication:
+  Phase A (delete): For each part, if an agent column's value equals a TC column's
+    value on THAT SAME PART, and LLM confirms they refer to the same property,
+    the agent column is deleted from all parts.
+  Phase B (merge): For remaining agent columns, if two agent columns have the same
+    value on the same part, and LLM confirms semantic equivalence, they are merged.
 
-If either condition fails, the columns are NOT merged.
+Values are compared within a single part only — no cross-part comparison.
 """
 
 import json
@@ -20,12 +23,13 @@ async def deduplicate_agent_columns(
     tc_attr_set: set[str],
     llm,
 ) -> tuple[list[dict], dict[str, str]]:
-    """Find and merge duplicate agent-extracted columns.
+    """Deduplicate agent-extracted columns using per-part value matching + LLM confirmation.
 
-    Returns (updated_results, merge_map) where merge_map is {removed_col: canonical_col}.
+    Returns (updated_results, action_map) where action_map is
+    {removed_col: canonical_col} for merges and {deleted_col: "DELETED"} for deletions.
     Never touches TC schema columns. Never changes attribute values.
     """
-    # Collect all agent-extra column names in order of first appearance
+    # Collect agent-extra column names in order of first appearance
     agent_cols: list[str] = []
     seen: set[str] = set()
     for r in results:
@@ -34,49 +38,135 @@ async def deduplicate_agent_columns(
                 agent_cols.append(k)
                 seen.add(k)
 
-    if len(agent_cols) < 2:
+    if not agent_cols:
         return results, {}
 
-    # Find candidate pairs: identical values in ALL parts where both are populated
-    candidate_pairs: list[tuple[str, str]] = []
-    for i, col_a in enumerate(agent_cols):
-        for col_b in agent_cols[i + 1:]:
-            # Find parts where both columns have non-empty values
-            both_populated: list[tuple[str, str]] = []
-            for r in results:
-                attrs = r.get("attributes", {})
-                val_a = attrs.get(col_a, "").strip()
-                val_b = attrs.get(col_b, "").strip()
-                if val_a and val_b:
-                    both_populated.append((val_a, val_b))
-
-            # Skip if no overlap (can't compare without shared data)
-            if not both_populated:
+    # ── Phase A: agent-vs-TC ─────────────────────────────────────────────────
+    # Per part: if agent col value == TC col value on THAT SAME PART → candidate
+    agent_tc_seen: set[tuple[str, str]] = set()
+    for r in results:
+        attrs = r.get("attributes", {})
+        for agent_col in agent_cols:
+            agent_val = attrs.get(agent_col, "").strip()
+            if not agent_val:
                 continue
+            for tc_col in tc_attr_set:
+                tc_val = attrs.get(tc_col, "").strip()
+                if tc_val and agent_val == tc_val:
+                    agent_tc_seen.add((agent_col, tc_col))
 
-            # AND condition: ALL overlapping parts must have identical values
-            if all(va == vb for va, vb in both_populated):
-                candidate_pairs.append((col_a, col_b))
+    cols_to_delete: set[str] = set()
+    if agent_tc_seen:
+        print(f"  [PostProc] {len(agent_tc_seen)} agent-vs-TC candidate(s) — checking semantic equivalence...")
+        cols_to_delete = await _confirm_agent_tc_duplicates(list(agent_tc_seen), llm)
+        if cols_to_delete:
+            print(f"  [PostProc] Deleting {len(cols_to_delete)} agent column(s) that duplicate TC attrs: {sorted(cols_to_delete)}")
+        else:
+            print("  [PostProc] LLM found no agent-TC duplicates to delete.")
 
-    if not candidate_pairs:
-        print("  [PostProc] No agent column pairs with identical values found.")
+    # ── Phase B: agent-vs-agent ──────────────────────────────────────────────
+    # Per part: if two remaining agent cols have the same value on the same part → candidate
+    remaining = [c for c in agent_cols if c not in cols_to_delete]
+    agent_agent_seen: set[tuple[str, str]] = set()
+    for r in results:
+        attrs = r.get("attributes", {})
+        for i, col_a in enumerate(remaining):
+            val_a = attrs.get(col_a, "").strip()
+            if not val_a:
+                continue
+            for col_b in remaining[i + 1:]:
+                val_b = attrs.get(col_b, "").strip()
+                if val_b and val_a == val_b:
+                    # Store in canonical order (alphabetical) to avoid duplicate pairs
+                    pair = (col_a, col_b) if col_a < col_b else (col_b, col_a)
+                    agent_agent_seen.add(pair)
+
+    merge_map: dict[str, str] = {}
+    if agent_agent_seen:
+        print(f"  [PostProc] {len(agent_agent_seen)} agent-vs-agent candidate pair(s) — checking semantic equivalence...")
+        merge_decisions = await _confirm_semantic_equivalence(list(agent_agent_seen), results, llm)
+        if merge_decisions:
+            merge_map = _resolve_merge_chains(merge_decisions)
+            print(f"  [PostProc] Merging {len(merge_map)} agent column pair(s): {merge_map}")
+        else:
+            print("  [PostProc] LLM found no agent-agent pairs to merge.")
+
+    if not cols_to_delete and not merge_map:
         return results, {}
 
-    print(f"  [PostProc] {len(candidate_pairs)} candidate pair(s) with identical values — checking semantic equivalence...")
+    updated = _apply_deletions_and_merges(results, cols_to_delete, merge_map)
+    action_map: dict[str, str] = {c: "DELETED (TC duplicate)" for c in cols_to_delete}
+    action_map.update(merge_map)
+    return updated, action_map
 
-    # Batch LLM call to confirm semantic equivalence
-    merge_decisions = await _confirm_semantic_equivalence(candidate_pairs, results, llm)
 
-    if not merge_decisions:
-        print("  [PostProc] LLM found no semantically equivalent pairs.")
-        return results, {}
+async def _confirm_agent_tc_duplicates(
+    candidate_pairs: list[tuple[str, str]],
+    llm,
+) -> set[str]:
+    """Ask LLM which agent columns are true duplicates of their paired TC columns.
 
-    # Resolve transitive chains (A→B, B→C → A→C, B→C)
-    merge_map = _resolve_merge_chains(merge_decisions)
+    candidate_pairs: list of (agent_col, tc_col) where values matched on the same part.
+    Returns set of agent_col names confirmed as duplicates (to be deleted).
+    """
+    pairs_data = [
+        {"id": f"{agent_col}|||{tc_col}", "agent_col": agent_col, "tc_col": tc_col}
+        for agent_col, tc_col in candidate_pairs[:20]
+    ]
+    prompt_json = json.dumps(pairs_data, ensure_ascii=False)
 
-    # Apply merges to all result dicts
-    updated = _apply_merges(results, merge_map)
-    return updated, merge_map
+    try:
+        raw = await llm.chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a mechanical engineering data specialist. "
+                        "Determine if agent-extracted attribute names are duplicates of "
+                        "standard Teamcenter (TC) schema attribute names. "
+                        "Be conservative — only confirm when you are certain. "
+                        "Return ONLY valid JSON."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "For each pair, the agent_col is an informal/abbreviated name "
+                        "extracted by an AI agent, and the tc_col is the official TC schema "
+                        "attribute name. They had identical values on the same part.\n\n"
+                        "Determine if each agent_col is truly a duplicate of the tc_col "
+                        "(i.e., they describe the same physical property). "
+                        "Examples: 'ID' duplicates 'Inner Diameter', 'OD' duplicates "
+                        "'Outer Diameter', 'T' duplicates 'Thickness'.\n\n"
+                        f"Pairs:\n{prompt_json}\n\n"
+                        "Return a JSON array:\n"
+                        "[{\"id\": \"agent_col|||tc_col\", \"duplicate\": true/false}]\n"
+                        "Only mark duplicate=true when certain."
+                    ),
+                },
+            ],
+            max_tokens=400,
+            temperature=0,
+        )
+
+        clean = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
+        clean = re.sub(r"\s*```$", "", clean, flags=re.MULTILINE)
+        decisions = json.loads(clean.strip())
+
+        cols_to_delete: set[str] = set()
+        for decision in decisions:
+            if not decision.get("duplicate"):
+                continue
+            pair_id = decision.get("id", "")
+            if "|||" not in pair_id:
+                continue
+            agent_col, _ = pair_id.split("|||", 1)
+            cols_to_delete.add(agent_col)
+        return cols_to_delete
+
+    except Exception as e:
+        print(f"  [PostProc] LLM agent-TC duplicate check failed: {e}")
+        return set()
 
 
 async def _confirm_semantic_equivalence(
@@ -84,14 +174,13 @@ async def _confirm_semantic_equivalence(
     results: list[dict],
     llm,
 ) -> dict[str, str]:
-    """Ask LLM to confirm which candidate pairs are semantically equivalent.
+    """Ask LLM to confirm which agent-vs-agent pairs are semantically equivalent.
 
     Returns {removed_col: canonical_col} for confirmed merges.
-    Uses a single batched LLM call for all candidate pairs (capped at 20).
+    Uses a single batched LLM call (capped at 20 pairs).
     """
     pairs_to_check = candidate_pairs[:20]
 
-    # Build prompt data with sample values for context
     pairs_data = []
     for col_a, col_b in pairs_to_check:
         sample_value = ""
@@ -125,11 +214,11 @@ async def _confirm_semantic_equivalence(
                 {
                     "role": "user",
                     "content": (
-                        f"These column pairs have identical values across all parts where "
-                        f"both appear. Determine if each pair refers to the SAME physical "
-                        f"property (e.g., 'Thread Size' and 'Screw Size' both mean the "
-                        f"nominal thread dimension). For confirmed equivalent pairs, choose "
-                        f"the most descriptive and specific canonical name.\n\n"
+                        f"These agent-extracted column pairs had identical values on the same "
+                        f"part. Determine if each pair refers to the SAME physical property "
+                        f"(e.g., 'Thread Size' and 'Screw Size' both mean the nominal thread "
+                        f"dimension). For confirmed equivalent pairs, choose the most "
+                        f"descriptive and specific canonical name.\n\n"
                         f"Pairs to evaluate:\n{prompt_json}\n\n"
                         f"Return a JSON array:\n"
                         f"[{{\"id\": \"col_a|||col_b\", \"equivalent\": true/false, "
@@ -143,7 +232,6 @@ async def _confirm_semantic_equivalence(
             temperature=0,
         )
 
-        # Parse response (strip markdown fences if present)
         clean = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
         clean = re.sub(r"\s*```$", "", clean, flags=re.MULTILINE)
         decisions = json.loads(clean.strip())
@@ -157,7 +245,6 @@ async def _confirm_semantic_equivalence(
             if "|||" not in pair_id or not canonical:
                 continue
             col_a, col_b = pair_id.split("|||", 1)
-            # The removed column is whichever is NOT the canonical name
             if canonical == col_a:
                 merge_decisions[col_b] = col_a
             elif canonical == col_b:
@@ -178,30 +265,39 @@ def _resolve_merge_chains(merge_map: dict[str, str]) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for removed, kept in merge_map.items():
         canonical = kept
-        # Follow the chain to the final canonical name
         while canonical in merge_map:
             canonical = merge_map[canonical]
         resolved[removed] = canonical
     return resolved
 
 
-def _apply_merges(results: list[dict], merge_map: dict[str, str]) -> list[dict]:
-    """Apply merge_map to all result dicts.
+def _apply_deletions_and_merges(
+    results: list[dict],
+    cols_to_delete: set[str],
+    merge_map: dict[str, str],
+) -> list[dict]:
+    """Apply deletions (Phase A) and merges (Phase B) to all result dicts.
 
-    For each removed column: move its value to the canonical column,
-    but only if the canonical column is empty for that part (never overwrite).
-    Values are never modified — only column names change.
+    Deletions: agent column removed entirely — no value transfer.
+    Merges: removed column's value backfills canonical only if canonical is empty.
+    Values are never modified — only keys change.
     """
     updated: list[dict] = []
     for r in results:
         r_copy = dict(r)
         attrs = dict(r_copy.get("attributes", {}))
+
+        # Phase A: delete agent cols that duplicate TC cols
+        for col in cols_to_delete:
+            attrs.pop(col, None)
+
+        # Phase B: merge agent-agent duplicates
         for removed, canonical in merge_map.items():
             if removed in attrs:
                 val = attrs.pop(removed)
-                # Backfill canonical only if it has no value for this part
                 if not attrs.get(canonical):
                     attrs[canonical] = val
+
         r_copy["attributes"] = attrs
         updated.append(r_copy)
     return updated
