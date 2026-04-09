@@ -6,7 +6,7 @@ Metrics are computed from data already available in the pipeline.
 """
 
 import re
-from src.attr_schema import ALIASES, LOV_MAP, CLASS_LOV_MAP, get_schema
+from src.attr_schema import ALIASES, CLASS_LOV_MAP, get_schema
 
 
 # ── Column 1: Attributes Extraction Coverage % ──────────────────────────────
@@ -218,7 +218,7 @@ def compute_lov_compliance(attributes: dict, part_class: str, lov_mismatches: di
         1 for k in attributes
         if (canonical := ALIASES.get(k.strip().lower(), k.strip()))
         and attributes[k]
-        and (class_lov.get(canonical) or LOV_MAP.get(canonical))
+        and class_lov.get(canonical)
         and (schema_set is None or canonical in schema_set)
     )
 

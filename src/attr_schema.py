@@ -16,7 +16,6 @@ PUBLIC API
 - CLASS_TREE_CHILDREN: dict[str, list[str]] — parent class name -> child class names
 - CLASS_LOV_MAP: dict[str, dict[str, list[str]]] — class name -> {canonical_attr_name -> [lov_values]}
                                        ID-resolved per class (correct LOV even when attr names clash globally)
-- LOV_MAP: dict[str, list[str]]      — canonical attr name -> LOV values (global, kept for compat)
 - ATTR_DICT: dict[str, dict]         — attr id -> full attribute record
 - get_schema(part_class) -> list[str]
 - get_tc_class_id(part_class) -> str
@@ -48,7 +47,6 @@ CLASS_LOV_MAP: dict[str, dict[str, list[str]]] = {}  # class_name -> {canonical_
 ALIASES: dict[str, str] = {}               # lowercase alias -> canonical attr name
 CLASS_ALIASES: dict[str, str] = {}         # lowercase class alias -> canonical class name
 CLASS_TREE_CHILDREN: dict[str, list[str]] = {}  # parent name -> [child names]
-LOV_MAP: dict[str, list[str]] = {}         # canonical attr name -> LOV values (global fallback, kept for compat)
 ATTR_DICT: dict[str, dict] = {}            # attr id -> full attribute record
 ATTR_DATATYPES: dict[str, str] = {}        # canonical attr name -> datatype string (float/string/etc)
 _DEFAULT_SCHEMA: list[str] = []
@@ -60,7 +58,7 @@ _SCHEMA_SOURCE: str = "none"               # "json" or "none"
 def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
     """Load schema from Classes.json + Attributes.json."""
     global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, CLASS_LOV_MAP, ALIASES, CLASS_ALIASES
-    global CLASS_TREE_CHILDREN, LOV_MAP, ATTR_DICT, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
+    global CLASS_TREE_CHILDREN, ATTR_DICT, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
 
     # --- Load attributes ---
     with open(attrs_path, "r", encoding="utf-8") as f:
@@ -86,9 +84,7 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         for alias in attr.get("aliases", []):
             ALIASES[alias.lower()] = canonical
 
-        # Populate global LOV_MAP (kept for backwards compat)
         if attr.get("lov"):
-            LOV_MAP[canonical] = attr["lov"]
             attr_lov_by_id[aid] = attr["lov"]
 
         # Populate ATTR_DATATYPES (optional field — supports float/string range averaging)
@@ -494,8 +490,8 @@ def normalize_attrs_with_lov_status(
         if not str_val:
             continue
 
-        # LOV normalization: use class-scoped LOV map (ID-resolved) with global fallback
-        lov_values = class_lov.get(canonical) or LOV_MAP.get(canonical)
+        # LOV normalization: class-scoped only (ID-resolved per class)
+        lov_values = class_lov.get(canonical)
         if lov_values:
             matched, ok = _fuzzy_match_lov(str_val, lov_values)
             if ok:

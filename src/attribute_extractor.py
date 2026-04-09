@@ -267,7 +267,7 @@ class AttributeExtractor:
         if not mismatches or len(mismatches) > 8:
             return {}
 
-        from src.attr_schema import CLASS_LOV_MAP, LOV_MAP
+        from src.attr_schema import CLASS_LOV_MAP
 
         # Build per-attr LOV options for only the mismatched attrs
         class_lov = CLASS_LOV_MAP.get(part_class, {})
@@ -280,7 +280,7 @@ class AttributeExtractor:
 
         attr_options: dict[str, dict] = {}
         for attr, value in mismatches.items():
-            lov_values = class_lov.get(attr) or LOV_MAP.get(attr)
+            lov_values = class_lov.get(attr)
             if lov_values:
                 attr_options[attr] = {"value": value, "options": lov_values}
 
