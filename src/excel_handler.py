@@ -64,7 +64,7 @@ RED_FILL = PatternFill("solid", fgColor="B71C1C")      # <50%
 LOV_MISMATCH_CELL_FILL = PatternFill("solid", fgColor="6B2020")  # Dark red — LOV mismatch cell
 
 # Result columns written before the dynamic attribute columns
-RESULT_PREFIX_COLS = ["Part Class", "TC Class ID", "Source URL"]
+RESULT_PREFIX_COLS = ["Part Class", "TC Class ID", "Source URL", "Unit of Measure (Agent)"]
 
 # Quality metric columns (after prefix, before TC attrs)
 METRICS_COLS = [
@@ -281,11 +281,12 @@ class ExcelHandler:
             for col_idx, col_name in enumerate(INPUT_COLUMNS, start=1):
                 ws.cell(row=row_idx, column=col_idx, value=part.get(col_name))
 
-            # Result prefix columns: Part Class, TC Class ID, Source URL
+            # Result prefix columns: Part Class, TC Class ID, Source URL, Unit of Measure (Agent)
             offset = len(INPUT_COLUMNS) + 1
             ws.cell(row=row_idx, column=offset, value=r.get("part_class", ""))
             ws.cell(row=row_idx, column=offset + 1, value=r.get("tc_class_id", ""))
             ws.cell(row=row_idx, column=offset + 2, value=str(r.get("source_url", "")))
+            ws.cell(row=row_idx, column=offset + 3, value=r.get("unit_of_measure", ""))
 
             # Quality metrics columns
             _metrics_map = {

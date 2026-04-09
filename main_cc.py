@@ -516,6 +516,7 @@ def process_part(
         "attributes":               attributes,
         "lov_mismatches":           lov_mismatches,
         "source_url":               source_url or "",
+        "unit_of_measure":          unit_of_measure or "",
         "source_type":              source_type,
         "extraction_coverage":      extraction_coverage,
         "source_reliability":       source_reliability,

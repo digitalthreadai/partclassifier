@@ -492,6 +492,7 @@ async def process_part(
         "range_originals": range_originals,
         "fraction_originals": fraction_originals,
         "source_url":      source_url or "",
+        "unit_of_measure": unit_of_measure or "",
         # Quality metrics
         "extraction_coverage": compute_extraction_coverage(attributes, part_class),
         "source_reliability": compute_source_reliability(
