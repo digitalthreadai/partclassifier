@@ -121,7 +121,7 @@ async def _confirm_agent_tc_duplicates(
                 {
                     "role": "system",
                     "content": (
-                        "You are a mechanical engineering data specialist. "
+                        "You are an industrial parts classification specialist. "
                         "Determine if agent-extracted attribute names are duplicates of "
                         "standard Teamcenter (TC) schema attribute names. "
                         "Be conservative — only confirm when you are certain. "
@@ -204,7 +204,7 @@ async def _confirm_semantic_equivalence(
                 {
                     "role": "system",
                     "content": (
-                        "You are a mechanical engineering data specialist. "
+                        "You are an industrial parts classification specialist. "
                         "Determine if pairs of attribute column names refer to the same "
                         "physical property in an industrial parts database. "
                         "Be conservative — only confirm equivalence when you are certain. "

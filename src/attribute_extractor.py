@@ -359,7 +359,7 @@ class AttributeExtractor:
             messages=[
                 {
                     "role": "system",
-                    "content": "Mechanical parts expert. Decode abbreviated part names. Return valid JSON only.",
+                    "content": "Industrial parts classification specialist. Decode abbreviated part names and identifiers. Return valid JSON only.",
                 },
                 {
                     "role": "user",

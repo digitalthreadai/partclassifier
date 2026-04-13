@@ -141,9 +141,9 @@ class ClaudeCodeClient:
     def classify(self, part_name: str) -> str:
         """Classify a single part name. Returns 1-4 word class string."""
         prompt = (
-            "You are a mechanical parts classification expert. "
+            "You are an industrial parts classification specialist. "
             "Reply with ONLY the category name, 1-4 words, no explanation.\n\n"
-            f"Classify this mechanical part into a standard category.\n"
+            f"Classify this industrial part into a standard category.\n"
             f"Part name: {part_name}\n\n"
             f"Common categories: {', '.join(KNOWN_CLASSES)}"
         )
@@ -173,7 +173,7 @@ class ClaudeCodeClient:
         parts_list = "\n".join(lines)
 
         prompt = (
-            "You are a mechanical parts classification expert.\n\n"
+            "You are an industrial parts classification specialist.\n\n"
             f"Classify each part below into a standard category (1-4 words).\n\n"
             f"Common categories: {', '.join(KNOWN_CLASSES)}\n\n"
             f"Parts to classify:\n{parts_list}\n\n"
@@ -284,7 +284,7 @@ class ClaudeCodeClient:
         unit_label, unit_short, convert_note = _unit_instructions(unit_of_measure)
 
         prompt = (
-            "You are a mechanical parts expert. "
+            "You are an industrial parts classification specialist. "
             "Return ONLY valid JSON. No markdown, no explanation.\n\n"
             f"Extract any dimensions or specifications encoded in this part name.\n\n"
             f"Part Number  : {mfg_part_num}\n"
@@ -328,7 +328,7 @@ class ClaudeCodeClient:
         domains_list = " OR ".join(f"site:{d}" for d in PREFERRED_DOMAINS)
 
         prompt = (
-            "You are a mechanical parts data extraction specialist.\n\n"
+            "You are an industrial parts data extraction specialist.\n\n"
             "TASK: Find specifications for this part from TRUSTED distributor websites.\n\n"
             f"Part Details:\n"
             f"  Manufacturer : {mfg_name}\n"
@@ -391,7 +391,7 @@ class ClaudeCodeClient:
         skip = "youtube.com, amazon.com, ebay.com, alibaba.com, wikipedia.org, reddit.com, pinterest.com"
 
         prompt = (
-            "You are a mechanical parts data extraction specialist.\n\n"
+            "You are an industrial parts data extraction specialist.\n\n"
             "TASK: Find specifications for this part online and extract structured attributes.\n\n"
             f"Part Details:\n"
             f"  Manufacturer : {mfg_name}\n"
@@ -441,7 +441,7 @@ class ClaudeCodeClient:
         schema_attrs = get_schema(part_class)
 
         prompt = (
-            "You are a mechanical parts data extraction specialist.\n\n"
+            "You are an industrial parts data extraction specialist.\n\n"
             f"TASK: Fetch this specific URL and extract part specifications:\n"
             f"  URL: {url}\n\n"
             f"Part Details:\n"
