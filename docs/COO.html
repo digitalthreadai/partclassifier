@@ -235,6 +235,21 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <div class="module">confidence.py, report_generator.py</div>
       <p>6 per-part quality metrics appended to every Excel output: Extraction Coverage % (TC schema completeness), Source Reliability % (weighted source quality), Classification Confidence % (classification certainty), Source Type (API/Stealth/Web/etc.), LOV Compliance % (value-list conformance), Validation Action (Confirmed/Reclassified/Abstained). HTML executive summary report (<code>run_summary.html</code>) with KPI cards, per-class averages, confidence distribution, and low-confidence parts list. Token usage tracking across runs.</p>
     </div>
+    <div class="feat">
+      <h4>Attribute Type Metadata</h4>
+      <div class="module">attr_schema.py · attr_type_rules.json</div>
+      <p>TC datatype-aware normalization per attribute: float precision rounding (ROUND_HALF_UP), sign validation, string length truncation, case-sensitive LOV matching. Driven by Attributes.json schema fields — no hardcoded rules.</p>
+    </div>
+    <div class="feat">
+      <h4>Strict Class-Scoped LOV</h4>
+      <div class="module">attr_schema.py · CLASS_LOV_MAP</div>
+      <p>All list-of-values lookups resolved by TC attribute ID per class via CLASS_LOV_MAP. No global fallback. LOV compliance % is always class-accurate — cross-class value contamination eliminated.</p>
+    </div>
+    <div class="feat">
+      <h4>Per-Part Dedup Post-Processor</h4>
+      <div class="module">post_processor.py</div>
+      <p>Phase A: agent columns that duplicate TC schema values are deleted. Phase B: agent columns with identical values are merged to canonical name. Both phases confined strictly to the same part row — no cross-part data bleed.</p>
+    </div>
   </div>
 
   <h2 id="execution-modes">Execution Modes</h2>
@@ -329,6 +344,9 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <li><strong>Per-part error isolation:</strong> one failed part doesn't stop the batch</li>
     <li><strong>Atomic writes:</strong> Windows-safe via tempfile + os.replace for all JSON caches</li>
     <li><strong>21 production-ready bug fixes:</strong> edge case handling for malformed HTML, encoding issues, API timeouts, graceful degradation when optional dependencies missing</li>
+    <li><strong>UOM inference:</strong> agent infers Unit of Measure from extracted specs when input column is blank; output as navy-blue TC column in Excel</li>
+    <li><strong>Part Name web validation:</strong> validates scraped page contains Part Name dimensional signals; evicts cache and re-searches if page fails validation</li>
+    <li><strong>Fractional value conversion:</strong> fractional inputs (e.g., 1/4 in) converted to decimals (0.25); unit suffixes stripped from numeric attribute values</li>
   </ul>
 
   <h2 id="tech-stack">Tech Stack</h2>
@@ -406,8 +424,12 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
       <div class="version">v2.0 <span class="tag done">Done</span></div>
       <div class="desc">Classification rearchitecture: classify&rarr;blind-extract&rarr;validate&rarr;extract pipeline, class_validator.py (attribute-fit scoring), classification_hints.json, schema files moved to schema/ directory, generate_schema.py replaces generate_aliases.py, as-is unit mode, removed Excel fallback and hardcoded defaults</div>
     </div>
+    <div class="roadmap-item done">
+      <div class="version">v2.1 <span class="tag done">Done</span></div>
+      <div class="desc">Attribute type metadata (unit/type/precision/case/sign in Attributes.json), attr_type_rules.json, strict class-scoped LOV via CLASS_LOV_MAP, per-part post-processor dedup (Phase A + Phase B), Unit of Measure (Agent) TC column, Part Name web validation with cache eviction, fractional value conversion, range original audit columns</div>
+    </div>
     <div class="roadmap-item">
-      <div class="version">v2.1 <span class="tag planned">Planned</span></div>
+      <div class="version">v2.2 <span class="tag planned">Planned</span></div>
       <div class="desc">Teamcenter direct import, additional part classes</div>
     </div>
   </div>
@@ -429,7 +451,8 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree
 │   ├── Attributes.json                # JSON schema: 46 attrs, LOV values, ranges
 │   ├── aliases.json                   # 500+ attribute aliases → canonical names
-│   └── classification_hints.json      # Class-specific keywords for deterministic matching
+│   ├── classification_hints.json      # Class-specific keywords for deterministic matching
+│   └── attr_type_rules.json           # Per-type normalization behaviors (precision, sign, strip_unit, average_range)
 ├── input/
 │   └── PartClassifierInput.xlsx       # Sample input
 ├── output/                    # One .xlsx per part class (with TC Class ID)

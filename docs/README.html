@@ -148,7 +148,7 @@ python main.py --fresh             # delete cache + progress, start fresh
 python main.py --no-cache          # bypass LLM cache
 python main.py --clear-cache       # delete cache before run
 
-  <h2 id="pipeline">Pipeline (7 Steps): Read &rarr; Search &rarr; Classify &rarr; Blind Extract &rarr; Validate &rarr; Extract &rarr; Write</h2>
+  <h2 id="pipeline">Pipeline (8 Steps): Read &rarr; Search &rarr; Classify &rarr; Blind Extract &rarr; Validate &rarr; Extract &rarr; Normalize &rarr; Write</h2>
 
   <table>
     <tr><th>Step</th><th>Action</th><th>Module(s)</th></tr>
@@ -158,8 +158,9 @@ python main.py --clear-cache       # delete cache before run
     <tr><td>4. Blind Extract</td><td>Regex pre-extraction from HTML tables, key-value patterns, standards (DIN/ASME/ISO), materials -- before classification is known</td><td><code>regex_extractor.py</code>, <code>content_cleaner.py</code></td></tr>
     <tr><td>5. Validate</td><td>Attribute-fit validation: check blind-extracted attributes against class schema, flag mismatches, reclassify if needed</td><td><code>class_validator.py</code></td></tr>
     <tr><td>6. Extract</td><td>LLM validates pre-extracted values + fills gaps via hybrid prompt (priority schema hints + maximize coverage), temperature=0. Unit conversion with as-is mode support</td><td><code>attribute_extractor.py</code></td></tr>
-    <tr><td>7. Write</td><td>Normalize 500+ alias mappings &rarr; canonical names, schema-ordered per class. Write per-class Excel with TC Class ID, canonical columns, styled headers</td><td><code>attr_schema.py</code>, <code>excel_handler.py</code></td></tr>
-    <tr><td>8. Metrics</td><td>Compute 6 per-part quality metrics (extraction coverage, source reliability, classification confidence, source type, LOV compliance, validation action). Generate HTML executive summary report</td><td><code>confidence.py</code>, <code>report_generator.py</code></td></tr>
+    <tr><td>7. Normalize</td><td>Apply precision rounding, sign validation, string length truncation, and case-sensitive LOV matching per Teamcenter attribute datatype. Driven by attr_type_rules.json.</td><td><code>attr_schema.py</code></td></tr>
+    <tr><td>8. Write</td><td>Normalize 500+ alias mappings &rarr; canonical names, schema-ordered per class. Write per-class Excel with TC Class ID, canonical columns, styled headers</td><td><code>attr_schema.py</code>, <code>excel_handler.py</code></td></tr>
+    <tr><td>9. Metrics</td><td>Compute 6 per-part quality metrics (extraction coverage, source reliability, classification confidence, source type, LOV compliance, validation action). Generate HTML executive summary report</td><td><code>confidence.py</code>, <code>report_generator.py</code></td></tr>
   </table>
 
   <h2 id="execution-modes">Execution Modes</h2>
@@ -309,8 +310,12 @@ python plmxml_to_json.py --demo                             # generate sample ou
     <li><code>TC Class ID</code> -- Teamcenter classification identifier</li>
     <li><code>Source URL</code> -- the web page or API the attributes came from</li>
     <li>6 quality metric columns: <code>Extraction Coverage %</code>, <code>Source Reliability %</code>, <code>Classification Confidence %</code>, <code>Source Type</code>, <code>LOV Compliance %</code>, <code>Validation Action</code></li>
+    <li><code>Unit of Measure (Agent)</code> — navy-blue TC column; agent-inferred UOM when the input Unit of Measure column is blank</li>
     <li>Extracted attribute columns specific to that class (canonical names, schema-ordered)</li>
+    <li>Range Original audit columns — pre-averaged range values kept for traceability (e.g., <code>Thread Size Range Original</code>)</li>
   </ul>
+
+  <p><strong>LOV mismatch columns:</strong> The <code>&lt;attr&gt;-NotPresentInLOV</code> column shows the post-conversion normalized value (e.g., <code>0.25</code>), not the pre-conversion raw value (e.g., <code>1/4 in</code>).</p>
 
   <p>An HTML executive summary report (<code>output/run_summary.html</code>) is also generated with KPI cards, per-class averages, confidence distribution, and low-confidence parts list.</p>
 
@@ -340,6 +345,10 @@ python plmxml_to_json.py --demo                             # generate sample ou
     <li><strong>Resume capability:</strong> checkpoint after each part via progress.json</li>
     <li><strong>Windows UTF-8 fix:</strong> prevents encoding errors in output</li>
     <li><strong>21 production bug fixes:</strong> comprehensive edge case handling</li>
+    <li><strong>Type-aware normalization:</strong> precision rounding (Decimal ROUND_HALF_UP), sign validation, string length truncation, and case-sensitive LOV matching per TC attribute datatype defined in Attributes.json</li>
+    <li><strong>Strict class-scoped LOV:</strong> all LOV lookups resolved by TC attribute ID per class via CLASS_LOV_MAP; no global fallback; LOV compliance % is always class-accurate</li>
+    <li><strong>Part Name web validation:</strong> validates scraped page contains Part Name dimensional signals; evicts cache and re-searches if page fails</li>
+    <li><strong>Per-part post-processor dedup:</strong> Phase A deletes agent columns that duplicate TC schema values; Phase B merges agent columns with identical values; both strictly per-part</li>
   </ul>
 
   <h2 id="part-classes">Supported Part Classes (93)</h2>
@@ -375,7 +384,8 @@ python plmxml_to_json.py --demo                             # generate sample ou
 │   ├── Classes.json                   # JSON schema: 93 classes, hierarchical tree
 │   ├── Attributes.json                # JSON schema: 46 attrs, LOV values, ranges
 │   ├── aliases.json                   # Auto-generated alias mappings
-│   └── classification_hints.json      # LLM-generated classification hints
+│   ├── classification_hints.json      # LLM-generated classification hints
+│   └── attr_type_rules.json           # Per-type normalization behaviors (precision, sign, strip_unit, average_range)
 ├── input/
 │   └── PartClassifierInput.xlsx       # Sample input
 ├── output/                    # One .xlsx per part class (with TC Class ID)
