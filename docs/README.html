@@ -99,6 +99,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.85rem}
     <div class="section-label">Reference</div>
     <a href="#benchmarks">Benchmarks</a>
     <a href="#output-format">Output Format</a>
+    <a href="#quality-metrics">Quality Metrics</a>
     <a href="#reliability">Reliability</a>
     <a href="#part-classes">Part Classes</a>
     <a href="#project-structure">Project Structure</a>
@@ -324,6 +325,84 @@ python plmxml_to_json.py --demo                             # generate sample ou
   Split Lock Washer.xlsx
   Deep Groove Ball Bearing.xlsx
   Tube Fitting.xlsx</pre>
+
+  <h2 id="quality-metrics">Quality Metrics</h2>
+
+  <p>Every part in the output Excel receives 6 per-part quality metric columns, computed purely from pipeline data — no extra LLM calls. Together they let you quickly identify which parts need review.</p>
+
+  <h3>1. Extraction Coverage %</h3>
+  <p>Percentage of TC schema attributes for the classified part class that were successfully extracted.</p>
+  <table>
+    <tr><th>Formula</th><td><code>matched_schema_attrs / total_schema_attrs × 100</code></td></tr>
+    <tr><th>Range</th><td>0 – 100. Higher = more complete TC attribute coverage.</td></tr>
+    <tr><th>Note</th><td>Only counts TC schema attributes — agent-extracted extras do not contribute.</td></tr>
+  </table>
+
+  <h3>2. Source Reliability %</h3>
+  <p>Weighted composite of 4 signals that reflect how trustworthy the data source is.</p>
+  <p><strong>Formula:</strong> <code>source_type×0.4 + mfg_pn_match×0.2 + coverage×0.2 + regex_agreement×0.2</code></p>
+  <table>
+    <tr><th>Signal</th><th>Weight</th><th>Details</th></tr>
+    <tr><td>Source type</td><td>40%</td><td>
+      Spec File (Text PDF) = 100 &bull; API (DigiKey/Mouser/McMaster) = 100 &bull;
+      Spec File (generic) = 95 &bull; Spec File (Vision/OCR) = 85 &bull;
+      Stealth = 80 &bull; Web (cached) = 75 &bull; Web (live) = 60 &bull;
+      Part name fallback = 20 &bull; None = 0
+    </td></tr>
+    <tr><td>MFG part number in content</td><td>20%</td><td>100 if the manufacturer part number appears in the scraped/file content; 0 if not.</td></tr>
+    <tr><td>Extraction coverage</td><td>20%</td><td>Same as Extraction Coverage % above — used as a signal here.</td></tr>
+    <tr><td>Regex / LLM agreement</td><td>20%</td><td>When both regex pre-extraction and LLM extraction ran: <code>agreed / (agreed + disagreed) × 100</code>. Defaults to 50 (neutral) when only one source ran (e.g., spec file only).</td></tr>
+  </table>
+  <p><strong>Spec file ceiling:</strong> A native text PDF with the MFG PN present and full schema coverage scores: <code>100×0.4 + 100×0.2 + 100×0.2 + 50×0.2 = 90</code>. The 50 neutral on regex agreement is the practical cap — regex doesn't run against files.</p>
+
+  <h3>3. Classification Confidence %</h3>
+  <p>Weighted composite reflecting how certain the agent is about the assigned part class.</p>
+  <p><strong>Formula:</strong> <code>classify_source×0.4 + validation_result×0.4 + in_json×0.2</code></p>
+  <table>
+    <tr><th>Signal</th><th>Weight</th><th>Details</th></tr>
+    <tr><td>Classify source</td><td>40%</td><td>
+      Web content (high-score pattern match) = 100 &bull;
+      Web content (low-score) = 80 &bull;
+      LLM cache hit = 75 &bull;
+      LLM classification = 60 &bull;
+      Part name / fallback = 30
+    </td></tr>
+    <tr><td>Validation result</td><td>40%</td><td>
+      Confirmed (score ≥ 3) = 100 &bull;
+      Reclassified (large margin ≥ 3) = 90 &bull;
+      Confirmed (low score) = 70 &bull;
+      Reclassified (small margin) = 70 &bull;
+      Abstained (low evidence) = 50 &bull;
+      No validation ran = 40
+    </td></tr>
+    <tr><td>Class in JSON schema</td><td>20%</td><td>100 if the class exists in Classes.json; 30 if not (agent invented a class name).</td></tr>
+  </table>
+
+  <h3>4. Source Type</h3>
+  <p>Plain-text label derived from the source name and extraction method. Possible values:</p>
+  <p>
+    <code>Spec File (Text)</code> &bull; <code>Spec File (Vision)</code> &bull; <code>Spec File</code> &bull;
+    <code>API</code> &bull; <code>Stealth</code> &bull; <code>Web (cached)</code> &bull;
+    <code>Web</code> &bull; <code>Part Name</code> &bull; <code>None</code>
+  </p>
+
+  <h3>5. LOV Compliance %</h3>
+  <p>Percentage of LOV-governed TC attributes whose extracted values match a valid List-of-Values entry.</p>
+  <table>
+    <tr><th>Formula</th><td><code>lov_compliant_attrs / lov_governed_extracted_attrs × 100</code></td></tr>
+    <tr><th>Range</th><td>0 – 100. Returns 100 when no LOV-governed attributes were extracted (nothing to violate).</td></tr>
+    <tr><th>Note</th><td>Uses <code>lov_mismatches</code> from the normalization pipeline as source of truth — guaranteed to match the <code>&lt;attr&gt;-NotPresentInLOV</code> flag columns in Excel. Counts only TC schema attributes; agent extras are excluded.</td></tr>
+  </table>
+
+  <h3>6. Validation Action</h3>
+  <p>Clean label describing what the attribute-fit validator did for this part:</p>
+  <table>
+    <tr><th>Value</th><th>Meaning</th></tr>
+    <tr><td><code>Confirmed</code></td><td>Initial classification validated — extracted attributes fit the assigned class schema.</td></tr>
+    <tr><td><code>Reclassified</code></td><td>Validator found a better-fitting class and switched to it.</td></tr>
+    <tr><td><code>Abstained</code></td><td>Too few signals to validate — original class kept without confirmation.</td></tr>
+    <tr><td><code>No validation</code></td><td>Validation did not run (e.g., no content available, or class was Unclassified).</td></tr>
+  </table>
 
   <h2 id="reliability">Reliability Features</h2>
 
