@@ -89,6 +89,9 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ("true", "on", "1", "ye
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 
+# Track which class schemas have already been printed in this run (avoids repetition)
+_printed_schemas: set[str] = set()
+
 
 async def _retry_llm(coro_fn, label: str):
     """Retry an async LLM call up to MAX_RETRIES times on timeout/transient errors."""
@@ -294,6 +297,16 @@ async def process_part(
     part_class, in_json = map_to_json_class(part_class)
     if part_class != original_class:
         print(f"  Mapped  : {original_class} -> {part_class} (JSON)")
+
+    # Debug: print full schema (attr IDs + metadata) for this class
+    if DEBUG_MODE and part_class not in ("Unclassified", "Error", "", None):
+        from src.attr_schema import get_class_schema_detail, TC_CLASS_IDS
+        if part_class not in _printed_schemas:
+            print(get_class_schema_detail(part_class))
+            _printed_schemas.add(part_class)
+        else:
+            tc_id = TC_CLASS_IDS.get(part_class, "?")
+            print(f"  Schema  : {part_class}  (TC class ID: {tc_id})  [see first occurrence above]")
 
     # STEP 3 — Validate classification via class-blind attribute extraction
     # Skipped when Part Name drove classification — final attr validation runs after Step 4b instead,

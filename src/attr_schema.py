@@ -270,6 +270,53 @@ def _load_aliases_json() -> None:
 
 _load_schema()
 
+# Reverse map: canonical attribute name → attribute ID (populated from ATTR_DICT)
+ATTR_ID_BY_NAME: dict[str, str] = {rec["name"]: aid for aid, rec in ATTR_DICT.items()}
+
+
+# ── Class schema detail (for debug logging) ──────────────────────────────────
+
+def get_class_schema_detail(part_class: str) -> str:
+    """Return a multi-line string describing the schema for a part class.
+
+    Shows TC class ID, then one line per attribute with its JSON id and metadata.
+    Used for DEBUG_MODE console/log output to validate schema loading.
+    """
+    schema_attrs = CLASS_SCHEMAS.get(part_class, [])
+    tc_id = TC_CLASS_IDS.get(part_class, "?")
+    meta_map = CLASS_ATTR_META.get(part_class, {})
+    lov_map = CLASS_LOV_MAP.get(part_class, {})
+
+    lines = [
+        f"  Schema  : {part_class}  (TC class ID: {tc_id})  [{len(schema_attrs)} attrs]",
+    ]
+    for attr in schema_attrs:
+        attr_id = ATTR_ID_BY_NAME.get(attr, "?")
+        meta = meta_map.get(attr, {})
+        lov = lov_map.get(attr)
+
+        # Build compact tag string: type | unit | len=N | prec=N | LOV(N)
+        tags: list[str] = []
+        if meta.get("type"):
+            tags.append(meta["type"])
+        if meta.get("unit"):
+            tags.append(f"unit={meta['unit']}")
+        if meta.get("length") is not None:
+            tags.append(f"len={meta['length']}")
+        if meta.get("precision") is not None:
+            tags.append(f"prec={meta['precision']}")
+        if meta.get("case") is not None:
+            tags.append(f"case={meta['case']}")
+        if meta.get("sign") is not None:
+            tags.append(f"sign={meta['sign']}")
+        if lov:
+            tags.append(f"LOV({len(lov)})")
+
+        tag_str = f"  [{', '.join(tags)}]" if tags else ""
+        lines.append(f"    id={attr_id:<8} {attr}{tag_str}")
+
+    return "\n".join(lines)
+
 
 # ── Class-map lookup helper ──────────────────────────────────────────────────
 
