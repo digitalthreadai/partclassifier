@@ -48,8 +48,9 @@ COLUMN_ALIASES = {
     "Unit of Measure": ["UOM", "Unit", "Units", "Measure"],
 }
 
-HEADER_FILL = PatternFill("solid", fgColor="1F4E79")       # Navy — input + prefix + TC attrs
-AGENT_HEADER_FILL = PatternFill("solid", fgColor="4A4A6A") # Gray-purple — agent-extracted attrs
+HEADER_FILL = PatternFill("solid", fgColor="1F4E79")           # Dark navy  — input + prefix + direct TC attrs
+INHERITED_HEADER_FILL = PatternFill("solid", fgColor="2E75B6") # Medium blue — inherited TC attrs (from parent classes)
+AGENT_HEADER_FILL = PatternFill("solid", fgColor="4A4A6A")     # Gray-purple — agent-extracted attrs
 METRICS_HEADER_FILL = PatternFill("solid", fgColor="2D5F2D") # Dark green — quality metrics
 LOV_MISMATCH_HEADER_FILL = PatternFill("solid", fgColor="C04040")  # Red — LOV mismatch flag
 PRE_CONV_ORIG_HEADER_FILL = PatternFill("solid", fgColor="B85C00") # Amber — pre-conversion original values
@@ -179,11 +180,13 @@ class ExcelHandler:
         Column order: INPUT + PREFIX + METRICS + TC_ATTRS (navy) + LOV_MISMATCH (red) + AGENT_ATTRS (gray)
         TC attrs include inherited attributes from parent classes in Classes.json.
         """
-        from src.attr_schema import get_schema
+        from src.attr_schema import get_schema, CLASS_DIRECT_ATTRS
 
         # Get TC-configured attributes for this class (includes inherited from parents)
         tc_attrs = get_schema(cls)
         tc_attr_set = set(tc_attrs)
+        # Direct attrs: only those in THIS class's own attributeslist (not inherited)
+        direct_attr_set: set[str] = CLASS_DIRECT_ATTRS.get(cls, set())
 
         # Collect all unique attribute keys across every part in this class
         all_attr_keys: list[str] = []
@@ -242,7 +245,11 @@ class ExcelHandler:
             if metrics_start < col_idx <= tc_attr_start:
                 cell.fill = METRICS_HEADER_FILL          # metrics (green)
             elif tc_attr_start < col_idx <= lov_mismatch_start:
-                cell.fill = HEADER_FILL                  # TC attrs (navy)
+                # TC attrs: dark navy for direct class attrs, medium blue for inherited
+                if header in direct_attr_set:
+                    cell.fill = HEADER_FILL              # dark navy — direct attr of this class
+                else:
+                    cell.fill = INHERITED_HEADER_FILL    # medium blue — inherited from parent
             elif lov_mismatch_start < col_idx <= pre_conv_orig_start:
                 cell.fill = LOV_MISMATCH_HEADER_FILL     # LOV mismatch flag (red)
             elif pre_conv_orig_start < col_idx <= agent_attr_start:

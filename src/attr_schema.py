@@ -47,6 +47,10 @@ TC_CLASS_IDS: dict[str, str] = {}          # class_name -> Teamcenter class ID
 CLASS_SCHEMAS: dict[str, list[str]] = {}   # class_name -> [canonical attr names] (inherited)
 CLASS_LOV_MAP: dict[str, dict[str, list[str]]] = {}  # class_name -> {canonical_attr_name -> [lov_values]}
 CLASS_ATTR_META: dict[str, dict[str, dict]] = {}     # class_name -> {canonical_attr_name -> {type,unit,length,precision,case,sign}}
+CLASS_ATTR_IDS: dict[str, dict[str, str]] = {}       # class_name -> {canonical_attr_name -> attr_id_string}
+                                                     # child-wins: each class records the ID it actually uses per attr
+CLASS_DIRECT_ATTRS: dict[str, set[str]] = {}         # class_name -> set of attr names in THIS class's own attributeslist
+                                                     # (excludes inherited attrs from parents)
 ALIASES: dict[str, str] = {}               # lowercase alias -> canonical attr name
 CLASS_ALIASES: dict[str, str] = {}         # lowercase class alias -> canonical class name
 CLASS_TREE_CHILDREN: dict[str, list[str]] = {}  # parent name -> [child names]
@@ -61,6 +65,7 @@ _SCHEMA_SOURCE: str = "none"               # "json" or "none"
 def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
     """Load schema from Classes.json + Attributes.json."""
     global KNOWN_CLASSES, TC_CLASS_IDS, CLASS_SCHEMAS, CLASS_LOV_MAP, CLASS_ATTR_META
+    global CLASS_ATTR_IDS, CLASS_DIRECT_ATTRS
     global ALIASES, CLASS_ALIASES, CLASS_TREE_CHILDREN, ATTR_DICT, _DEFAULT_SCHEMA, _SCHEMA_SOURCE
 
     # --- Load attributes ---
@@ -118,6 +123,7 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
         attr_lov_by_id=attr_lov_by_id,
         inherited_meta_map={},
         attr_meta_by_id=attr_meta_by_id,
+        inherited_id_map={},
     )
 
     # Build default schema from common attributes
@@ -138,6 +144,7 @@ def _flatten_tree(
     attr_lov_by_id: dict[str, list[str]],
     inherited_meta_map: dict[str, dict],
     attr_meta_by_id: dict[str, dict],
+    inherited_id_map: dict[str, str],
 ) -> None:
     """Recursively walk the class tree, populating module-level data.
 
@@ -145,10 +152,13 @@ def _flatten_tree(
     directly-assigned attributes. Only leaf and named intermediate classes
     are added to KNOWN_CLASSES.
 
-    CLASS_LOV_MAP and CLASS_ATTR_META are built using attr IDs from attributeslist
-    to resolve the CORRECT data per class — even when multiple attributes share the
-    same name globally. First-wins rule: parent definition takes precedence over
-    child re-declarations of the same attribute name.
+    Child-wins rule: when a class re-declares an attribute that exists in a parent
+    (same name, different attr ID), the child's ID takes precedence for LOV, type
+    metadata, and the per-class ID map (CLASS_ATTR_IDS). The child class's own
+    attributeslist definition is always authoritative for that class's context.
+
+    Attribute ordering in CLASS_SCHEMAS still uses first-wins (inherited attrs come
+    first in parent order, child's NEW attrs appended) — no duplicates by name.
     """
     for node in nodes:
         name = node["name"]
@@ -163,29 +173,42 @@ def _flatten_tree(
             if aname:
                 direct_attr_names.append(aname)
 
-        # Full attribute list = inherited + direct (no duplicates, order preserved)
+        # Full attribute list = inherited + direct (no duplicates by name, order preserved)
+        # Ordering uses first-wins: inherited attrs keep parent position; only truly NEW
+        # attr names (not already inherited) are appended from the direct list.
         full_attrs = list(inherited_attrs)
         for a in direct_attr_names:
             if a not in full_attrs:
                 full_attrs.append(a)
 
-        # Build class-scoped LOV map: start from inherited (first-wins — parent beats child)
+        # Build per-class attr-name → attr-id map.
+        # CHILD-WINS: this class's own attributeslist IDs overwrite any inherited ID
+        # for the same attr name. Ensures correct ID is used per class context.
+        full_id_map: dict[str, str] = dict(inherited_id_map)
+        for aid in node.get("attributeslist", []):
+            aname = attr_name_by_id.get(str(aid))
+            if aname:
+                full_id_map[aname] = str(aid)  # always overwrite — child wins
+
+        # Build class-scoped LOV map.
+        # CHILD-WINS: this class's own attributeslist IDs overwrite any inherited LOV.
         full_lov_map: dict[str, list[str]] = dict(inherited_lov_map)
         for aid in node.get("attributeslist", []):
             aname = attr_name_by_id.get(str(aid))
-            if aname and aname not in full_lov_map:
+            if aname:
                 lov = attr_lov_by_id.get(str(aid))
                 if lov:
-                    full_lov_map[aname] = lov
+                    full_lov_map[aname] = lov  # always overwrite — child wins
 
-        # Build class-scoped type metadata map: start from inherited (first-wins)
+        # Build class-scoped type metadata map.
+        # CHILD-WINS: this class's own attributeslist IDs overwrite any inherited meta.
         full_meta_map: dict[str, dict] = dict(inherited_meta_map)
         for aid in node.get("attributeslist", []):
             aname = attr_name_by_id.get(str(aid))
-            if aname and aname not in full_meta_map:
+            if aname:
                 meta = attr_meta_by_id.get(str(aid))
                 if meta:
-                    full_meta_map[aname] = meta
+                    full_meta_map[aname] = meta  # always overwrite — child wins
 
         # Register this class
         KNOWN_CLASSES.append(name)
@@ -193,6 +216,8 @@ def _flatten_tree(
         CLASS_SCHEMAS[name] = full_attrs
         CLASS_LOV_MAP[name] = full_lov_map
         CLASS_ATTR_META[name] = full_meta_map
+        CLASS_ATTR_IDS[name] = full_id_map
+        CLASS_DIRECT_ATTRS[name] = set(direct_attr_names)
 
         # Class aliases
         for alias in aliases:
@@ -202,12 +227,13 @@ def _flatten_tree(
         if children:
             CLASS_TREE_CHILDREN[name] = [c["name"] for c in children]
 
-        # Recurse into children, passing accumulated attrs, LOV map, and meta map
+        # Recurse into children, passing accumulated attrs, LOV map, meta map, and ID map
         if children:
             _flatten_tree(
                 children, full_attrs, attr_name_by_id,
                 full_lov_map, attr_lov_by_id,
                 full_meta_map, attr_meta_by_id,
+                full_id_map,
             )
 
 
@@ -270,9 +296,6 @@ def _load_aliases_json() -> None:
 
 _load_schema()
 
-# Reverse map: canonical attribute name → attribute ID (populated from ATTR_DICT)
-ATTR_ID_BY_NAME: dict[str, str] = {rec["name"]: aid for aid, rec in ATTR_DICT.items()}
-
 
 # ── Class schema detail (for debug logging) ──────────────────────────────────
 
@@ -280,18 +303,23 @@ def get_class_schema_detail(part_class: str) -> str:
     """Return a multi-line string describing the schema for a part class.
 
     Shows TC class ID, then one line per attribute with its JSON id and metadata.
+    Each attr's ID comes from CLASS_ATTR_IDS — the per-class, child-wins map that
+    records exactly which attr ID this class is using for each attr name.
     Used for DEBUG_MODE console/log output to validate schema loading.
     """
     schema_attrs = CLASS_SCHEMAS.get(part_class, [])
     tc_id = TC_CLASS_IDS.get(part_class, "?")
     meta_map = CLASS_ATTR_META.get(part_class, {})
     lov_map = CLASS_LOV_MAP.get(part_class, {})
+    id_map = CLASS_ATTR_IDS.get(part_class, {})   # per-class correct IDs
 
     lines = [
         f"  Schema  : {part_class}  (TC class ID: {tc_id})  [{len(schema_attrs)} attrs]",
     ]
+    direct_set = CLASS_DIRECT_ATTRS.get(part_class, set())
     for attr in schema_attrs:
-        attr_id = ATTR_ID_BY_NAME.get(attr, "?")
+        attr_id = id_map.get(attr, "?")            # correct ID for THIS class
+        inherited_marker = "" if attr in direct_set else " (inherited)"
         meta = meta_map.get(attr, {})
         lov = lov_map.get(attr)
 
@@ -313,7 +341,7 @@ def get_class_schema_detail(part_class: str) -> str:
             tags.append(f"LOV({len(lov)})")
 
         tag_str = f"  [{', '.join(tags)}]" if tags else ""
-        lines.append(f"    id={attr_id:<8} {attr}{tag_str}")
+        lines.append(f"    id={attr_id:<8} {attr}{tag_str}{inherited_marker}")
 
     return "\n".join(lines)
 
