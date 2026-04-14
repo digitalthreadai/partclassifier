@@ -26,6 +26,9 @@ _RANGE_RE = re.compile(
     r"([+-]?\d+\.?\d*)\s*([a-zA-Z%\"\u2032\u2033]*)\s*$"
 )
 
+# Match: <nominal value + optional unit> followed by +/- or ± and a tolerance amount
+_TOLERANCE_RE = re.compile(r'^(.+?)\s*(?:\+/-|±)\s*\d', re.IGNORECASE)
+
 # ── Type behavior config (loaded from schema/attr_type_rules.json) ────────────
 
 _TYPE_RULES_PATH = Path(__file__).parent.parent / "schema" / "attr_type_rules.json"
@@ -54,6 +57,21 @@ def _load_type_rules() -> dict:
 _TYPE_RULES = _load_type_rules()
 _NUMERIC_TYPES: frozenset[str] = frozenset(t.lower() for t in _TYPE_RULES.get("numeric_types", []))
 _STRING_TYPES: frozenset[str] = frozenset(t.lower() for t in _TYPE_RULES.get("string_types", []))
+
+
+def strip_tolerance(value: str) -> str:
+    """Strip tolerance suffix from a numeric value, keeping only the nominal.
+
+    Examples:
+        "0.062 in +/- 0.007 in"  →  "0.062 in"
+        "5mm ± 0.5mm"            →  "5mm"
+        "0.062 +/- 0.007"        →  "0.062"
+    """
+    m = _TOLERANCE_RE.match(value.strip())
+    if m:
+        return m.group(1).rstrip()
+    return value
+
 
 # ── Fraction → decimal ───────────────────────────────────────────────────────
 # Mixed number: "1-1/2" or "2 3/4". Whole separated from fraction by space or hyphen.
@@ -213,8 +231,13 @@ def apply_precision(value: str, precision: int) -> str:
         return value
     try:
         from decimal import Decimal, ROUND_HALF_UP
+        d = Decimal(value)
+        # Count existing decimal places; only round if value exceeds precision — never pad
+        existing = max(0, -d.as_tuple().exponent)
+        if existing <= precision:
+            return value
         quantizer = Decimal(10) ** -precision
-        return str(Decimal(value).quantize(quantizer, rounding=ROUND_HALF_UP))
+        return str(d.quantize(quantizer, rounding=ROUND_HALF_UP))
     except Exception:
         return value  # not a plain number — leave unchanged
 

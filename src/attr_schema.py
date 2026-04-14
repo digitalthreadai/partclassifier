@@ -508,7 +508,7 @@ def normalize_attrs_with_lov_status(
         or string length truncation. Only the first change per attr is recorded.
     """
     from src.range_handler import (
-        average_range, fraction_to_decimal, strip_unit_suffix,
+        average_range, fraction_to_decimal, strip_unit_suffix, strip_tolerance,
         apply_precision, apply_length, apply_sign, get_type_behavior,
     )
 
@@ -544,6 +544,13 @@ def normalize_attrs_with_lov_status(
         attr_meta = class_attr_meta.get(canonical, {})
         attr_type = attr_meta.get("type")
         behavior = get_type_behavior(attr_type) if attr_type else {}
+
+        # Step 0: Strip tolerance notation for numeric types (e.g., "0.062 in +/- 0.007 in" → "0.062 in")
+        if behavior.get("strip_unit"):  # True for all numeric types, False for string/LOV
+            original_before_tol = str_val
+            str_val = strip_tolerance(str_val)
+            if str_val != original_before_tol:
+                _record_original(canonical, original_before_tol)
 
         # Step 1: Fraction → decimal (only for types that support it)
         if not attr_type or behavior.get("fraction_to_decimal", True):
