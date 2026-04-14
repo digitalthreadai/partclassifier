@@ -290,13 +290,13 @@ document.querySelectorAll('table').forEach(makeSortable);
 # ── HTML helpers ─────────────────────────────────────────────────────────────
 
 def _color_class(val: float) -> str:
-    if val >= 80: return "green"
+    if val >= 70: return "green"
     if val >= 50: return "amber"
     return "red"
 
 
 def _badge(val: float) -> str:
-    cls = "badge-green" if val >= 80 else "badge-amber" if val >= 50 else "badge-red"
+    cls = "badge-green" if val >= 70 else "badge-amber" if val >= 50 else "badge-red"
     return f'<span class="badge {cls}">{val:.1f}%</span>'
 
 
