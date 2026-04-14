@@ -67,9 +67,15 @@ def strip_tolerance(value: str) -> str:
         "5mm ± 0.5mm"            →  "5mm"
         "0.062 +/- 0.007"        →  "0.062"
     """
-    m = _TOLERANCE_RE.match(value.strip())
+    stripped = value.strip()
+    m = _TOLERANCE_RE.match(stripped)
     if m:
-        return m.group(1).rstrip()
+        result = m.group(1).rstrip()
+        print(f"  [Tolerance] Stripped: '{stripped}' → '{result}'")
+        return result
+    # Debug: log when a suspected tolerance value doesn't match the pattern
+    if "+/-" in stripped or "±" in stripped:
+        print(f"  [Tolerance] WARNING: suspected tolerance but regex did not match: repr={repr(stripped)}")
     return value
 
 
