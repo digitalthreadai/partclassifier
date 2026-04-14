@@ -237,8 +237,11 @@ def apply_length(value: str, length: int, type_name: str) -> tuple[str, str | No
             print(f"[AttrType] String value truncated to length {_length}: '{value[:40]}...'")
             return value[:_length], value
     else:
-        if len(str(value)) > _length:
-            print(f"[AttrType] WARNING: numeric value '{value}' exceeds declared length {_length} — not truncated")
+        integer_part = str(value).split(".")[0].lstrip("-+")
+        integer_digit_count = len(integer_part)
+        if integer_digit_count > _length:
+            print(f"[AttrType] WARNING: numeric value '{value}' has {integer_digit_count} integer digits, "
+                  f"exceeds declared length {_length} — not truncated")
     return value, None
 
 
