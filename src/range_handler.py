@@ -208,6 +208,7 @@ def apply_precision(value: str, precision: int) -> str:
     Requires that unit suffixes have already been stripped (strip_unit_suffix).
     Non-numeric values returned unchanged. precision must be >= 0.
     """
+    precision = int(precision)
     if precision < 0 or not value:
         return value
     try:
@@ -229,14 +230,15 @@ def apply_length(value: str, length: int, type_name: str) -> tuple[str, str | No
     """
     if not value:
         return value, None
+    _length = int(length)
     type_lower = (type_name or "").lower()
     if type_lower in _STRING_TYPES:
-        if len(value) > length:
-            print(f"[AttrType] String value truncated to length {length}: '{value[:40]}...'")
-            return value[:length], value
+        if len(value) > _length:
+            print(f"[AttrType] String value truncated to length {_length}: '{value[:40]}...'")
+            return value[:_length], value
     else:
-        if len(str(value)) > length:
-            print(f"[AttrType] WARNING: numeric value '{value}' exceeds declared length {length} — not truncated")
+        if len(str(value)) > _length:
+            print(f"[AttrType] WARNING: numeric value '{value}' exceeds declared length {_length} — not truncated")
     return value, None
 
 
@@ -251,9 +253,10 @@ def apply_sign(value: str, sign: int) -> bool:
     """
     try:
         n = float(value)
-        if sign == 0 and n < 0:
+        _sign = int(sign)
+        if _sign == 0 and n < 0:
             return False  # positive required, negative found → violated
-        if sign == 1 and n > 0:
+        if _sign == 1 and n > 0:
             return False  # negative required, positive found → violated
         return True
     except (ValueError, TypeError):

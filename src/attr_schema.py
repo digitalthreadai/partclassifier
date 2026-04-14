@@ -95,6 +95,13 @@ def _load_from_json(classes_path: Path, attrs_path: Path) -> None:
 
         # Populate attr_meta_by_id with new type metadata fields (if present)
         meta = {f: attr[f] for f in _META_FIELDS if attr.get(f) is not None}
+        # Cast integer fields to int — Attributes.json may store them as quoted strings
+        for _int_field in ("length", "precision", "case", "sign"):
+            if _int_field in meta:
+                try:
+                    meta[_int_field] = int(meta[_int_field])
+                except (ValueError, TypeError):
+                    pass
         if meta:
             attr_meta_by_id[aid] = meta
 
