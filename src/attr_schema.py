@@ -488,7 +488,7 @@ def schema_source() -> str:
 
 def normalize_attrs_with_lov_status(
     raw: dict, part_class: str
-) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     """Normalize raw LLM-extracted attributes for the given part class.
 
     Operation order per attribute:
@@ -501,7 +501,11 @@ def normalize_attrs_with_lov_status(
       7. apply_sign               (integer only; violated values are DROPPED with warning)
 
     Returns:
-        (ordered_attrs, lov_mismatches, range_originals, fraction_originals)
+        (ordered_attrs, lov_mismatches, pre_conversion_originals)
+
+        pre_conversion_originals holds the earliest pre-conversion value for each attr
+        that was changed by any of: fraction→decimal, range averaging, precision rounding,
+        or string length truncation. Only the first change per attr is recorded.
     """
     from src.range_handler import (
         average_range, fraction_to_decimal, strip_unit_suffix,
@@ -517,8 +521,12 @@ def normalize_attrs_with_lov_status(
 
     normalized: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
-    range_originals: dict[str, str] = {}
-    fraction_originals: dict[str, str] = {}
+    pre_conversion_originals: dict[str, str] = {}
+
+    def _record_original(attr: str, original: str) -> None:
+        """Store original value only on the first conversion for this attr."""
+        if attr in schema_set and attr not in pre_conversion_originals:
+            pre_conversion_originals[attr] = original
 
     for k, v in raw.items():
         k_lower = k.strip().lower()
@@ -541,21 +549,24 @@ def normalize_attrs_with_lov_status(
         if not attr_type or behavior.get("fraction_to_decimal", True):
             original_before_frac = str_val
             str_val = fraction_to_decimal(str_val)
-            if str_val != original_before_frac and canonical in schema_set:
-                fraction_originals[canonical] = original_before_frac
+            if str_val != original_before_frac:
+                _record_original(canonical, original_before_frac)
 
         # Step 2: Range averaging (use class-scoped type, no global fallback)
         original_before_avg = str_val
         str_val = average_range(str_val, attr_type)
-        if str_val != original_before_avg and canonical in schema_set:
-            range_originals[canonical] = original_before_avg
+        if str_val != original_before_avg:
+            _record_original(canonical, original_before_avg)
 
         # Step 3: Strip unit suffix (use class-scoped type)
         str_val = strip_unit_suffix(str_val, attr_type)
 
         # Step 4: Apply precision (float/double only; before LOV so LOV sees rounded value)
         if behavior.get("apply_precision") and attr_meta.get("precision") is not None:
+            original_before_precision = str_val
             str_val = apply_precision(str_val, attr_meta["precision"])
+            if str_val != original_before_precision:
+                _record_original(canonical, original_before_precision)
 
         # Step 5: LOV normalization (class-scoped; respects case field)
         lov_values = class_lov.get(canonical)
@@ -567,13 +578,11 @@ def normalize_attrs_with_lov_status(
             else:
                 lov_mismatches[canonical] = str_val
 
-        # Step 6: Apply length (string: truncate; numeric: log only)
+        # Step 6: Apply length (string: truncate + record original; numeric: log only)
         if attr_meta.get("length") is not None:
             str_val, length_original = apply_length(str_val, attr_meta["length"], attr_type or "")
-            # For strings, record original if truncated (audit trail)
-            if length_original is not None and canonical in schema_set:
-                if canonical not in fraction_originals:
-                    fraction_originals[canonical] = length_original  # reuse fraction_originals slot
+            if length_original is not None:
+                _record_original(canonical, length_original)
 
         # Step 7: Apply sign (integer only; drop value if violated)
         if behavior.get("apply_sign") and attr_meta.get("sign") is not None:
@@ -593,7 +602,7 @@ def normalize_attrs_with_lov_status(
         if key not in ordered:
             ordered[key] = val
 
-    return ordered, lov_mismatches, range_originals, fraction_originals
+    return ordered, lov_mismatches, pre_conversion_originals
 
 
 def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
@@ -601,5 +610,5 @@ def normalize_attrs(raw: dict, part_class: str) -> dict[str, str]:
 
     Returns only the normalized dict (without LOV mismatch tracking).
     """
-    ordered, _, _, _ = normalize_attrs_with_lov_status(raw, part_class)
+    ordered, _, _ = normalize_attrs_with_lov_status(raw, part_class)
     return ordered

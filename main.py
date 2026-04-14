@@ -130,8 +130,7 @@ async def process_part(
     file_result = None
     file_attrs: dict[str, str] = {}
     file_lov_mismatches: dict[str, str] = {}
-    file_range_originals: dict[str, str] = {}
-    file_fraction_originals: dict[str, str] = {}
+    file_pre_conversion_originals: dict[str, str] = {}
     spec_file = find_spec_file(part_number, mfg_part_num)
     if spec_file:
         print(f"  Spec file: {spec_file.name}")
@@ -299,7 +298,7 @@ async def process_part(
                 "ExtractFromFile"
             )
             if file_extracted:
-                file_attrs, file_lov_mismatches, file_range_originals, file_fraction_originals = file_extracted
+                file_attrs, file_lov_mismatches, file_pre_conversion_originals = file_extracted
                 print(f"  File    : extracted {len(file_attrs)} attrs (locked, will not be overridden)")
             if metrics:
                 metrics.record_llm_call("extract")
@@ -319,14 +318,13 @@ async def process_part(
     # STEP 4 — Extract attributes from web/API (gap-filling only if file_attrs exist)
     attributes: dict[str, str] = {}
     lov_mismatches: dict[str, str] = {}
-    range_originals: dict[str, str] = {}
-    fraction_originals: dict[str, str] = {}
+    pre_conversion_originals: dict[str, str] = {}
     source_url = ""
     regex_agreement = None
 
     if result.attributes and len(result.attributes) >= 3:
         # Structured API data — normalize and skip LLM extraction
-        attributes, lov_mismatches, range_originals, fraction_originals = normalize_attrs_with_lov_status(result.attributes, part_class)
+        attributes, lov_mismatches, pre_conversion_originals = normalize_attrs_with_lov_status(result.attributes, part_class)
         source_url = result.source_url
         print(f"  Source   : {result.source_name}")
     elif result.content:
@@ -336,7 +334,7 @@ async def process_part(
             cached_attrs = llm_cache.get_extraction(mfg_part_num, part_class, result.content)
         if cached_attrs:
             # Cached attrs are already normalized; re-run LOV check for mismatches
-            attributes, lov_mismatches, range_originals, fraction_originals = normalize_attrs_with_lov_status(cached_attrs, part_class)
+            attributes, lov_mismatches, pre_conversion_originals = normalize_attrs_with_lov_status(cached_attrs, part_class)
             source_url = result.source_url
             print(f"  Attrs   : {len(attributes)} (cached)")
             if metrics:
@@ -353,7 +351,7 @@ async def process_part(
                     "Extract"
                 )
                 if extracted:
-                    attributes, lov_mismatches, range_originals, fraction_originals = extracted
+                    attributes, lov_mismatches, pre_conversion_originals = extracted
             except Exception as e:
                 print(f"  Extract : error (continuing with empty attrs): {e}")
             source_url = result.source_url
@@ -378,7 +376,7 @@ async def process_part(
                 "ExtractFromName"
             )
             if name_extracted:
-                attributes, lov_mismatches, range_originals, fraction_originals = name_extracted
+                attributes, lov_mismatches, pre_conversion_originals = name_extracted
                 source_url = "part name (fallback)"
                 print(f"  Part name extracted {len(attributes)} attrs")
             if metrics:
@@ -395,7 +393,7 @@ async def process_part(
             "ExtractFromName"
         )
         if name_extracted:
-            attributes, lov_mismatches, range_originals, fraction_originals = name_extracted
+            attributes, lov_mismatches, pre_conversion_originals = name_extracted
         if metrics:
             metrics.record_llm_call("extract")
 
@@ -413,17 +411,11 @@ async def process_part(
         merged_mismatches.update(file_lov_mismatches)
         lov_mismatches = merged_mismatches
 
-        # Merge range originals (file wins)
-        merged_ranges: dict[str, str] = {}
-        merged_ranges.update(range_originals)
-        merged_ranges.update(file_range_originals)
-        range_originals = merged_ranges
-
-        # Merge fraction originals (file wins)
-        merged_fractions: dict[str, str] = {}
-        merged_fractions.update(fraction_originals)
-        merged_fractions.update(file_fraction_originals)
-        fraction_originals = merged_fractions
+        # Merge pre-conversion originals (file wins)
+        merged_pre_conv: dict[str, str] = {}
+        merged_pre_conv.update(pre_conversion_originals)
+        merged_pre_conv.update(file_pre_conversion_originals)
+        pre_conversion_originals = merged_pre_conv
 
         # If file extraction provided most of the data, prefer file as source
         if len(file_attrs) >= len(attributes) * 0.5:
@@ -489,8 +481,7 @@ async def process_part(
         "in_json":         in_json,
         "attributes":      attributes,
         "lov_mismatches":  lov_mismatches,
-        "range_originals": range_originals,
-        "fraction_originals": fraction_originals,
+        "pre_conversion_originals": pre_conversion_originals,
         "source_url":      source_url or "",
         "unit_of_measure": unit_of_measure or "",
         # Quality metrics
