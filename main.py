@@ -37,6 +37,29 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 BASE_DIR = Path(__file__).parent
 
 
+class _Tee:
+    """Mirror writes to both the original stream and a log file simultaneously."""
+
+    def __init__(self, stream, log_path: Path):
+        self._stream = stream
+        self._log = open(log_path, "w", encoding="utf-8", errors="replace")
+
+    def write(self, data):
+        self._stream.write(data)
+        self._log.write(data)
+
+    def flush(self):
+        self._stream.flush()
+        self._log.flush()
+
+    def close(self):
+        self._log.close()
+
+    def __getattr__(self, name):
+        # Delegate encoding, isatty, errors, etc. to the original stream
+        return getattr(self._stream, name)
+
+
 def _get_arg(flag: str, default: str) -> str:
     for i, arg in enumerate(sys.argv):
         if arg == flag and i + 1 < len(sys.argv):
@@ -59,6 +82,9 @@ FRESH = _has_flag("--fresh")
 # Optional post-processing: deduplicate agent-extracted columns via LLM
 # Set POST_PROCESS_DEDUP=true in .env to enable
 POST_PROCESS_DEDUP = os.getenv("POST_PROCESS_DEDUP", "false").lower() in ("true", "1", "yes")
+# Debug logging: mirror all console output to output-*/debug.log
+# Set DEBUG_MODE=ON in .env to enable
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ("true", "on", "1", "yes")
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -507,6 +533,24 @@ async def main() -> None:
         print(f"ERROR: {EXCEL_PATH} not found")
         sys.exit(1)
 
+    # Debug log: mirror all output to output-*/debug.log when DEBUG_MODE=ON
+    _tee = None
+    if DEBUG_MODE:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        log_path = OUTPUT_DIR / "debug.log"
+        _tee = _Tee(sys.stdout, log_path)
+        sys.stdout = _tee
+        print(f"  Debug  : logging to {log_path}")
+
+    try:
+        await _main_body()
+    finally:
+        if _tee:
+            sys.stdout = _tee._stream
+            _tee.close()
+
+
+async def _main_body() -> None:
     from src.llm_client          import LLMClient
     from src.excel_handler       import ExcelHandler
     from src.part_classifier     import PartClassifier

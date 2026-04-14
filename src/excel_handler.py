@@ -57,8 +57,8 @@ HEADER_FONT = Font(bold=True, color="FFFFFF")
 CENTER = Alignment(horizontal="center", wrap_text=True)
 
 # Conditional fill colors for percentage metrics
-GREEN_FILL = PatternFill("solid", fgColor="1B5E20")    # ≥80%
-AMBER_FILL = PatternFill("solid", fgColor="E65100")    # 50-79%
+GREEN_FILL = PatternFill("solid", fgColor="1B5E20")    # ≥70%
+AMBER_FILL = PatternFill("solid", fgColor="E65100")    # 50–69%
 RED_FILL = PatternFill("solid", fgColor="B71C1C")      # <50%
 LOV_MISMATCH_CELL_FILL = PatternFill("solid", fgColor="6B2020")  # Dark red — LOV mismatch cell
 
@@ -286,7 +286,7 @@ class ExcelHandler:
                 cell = ws.cell(row=row_idx, column=offset + len(RESULT_PREFIX_COLS) + mi, value=val)
                 # Color-code percentage cells
                 if mc in _PCT_METRICS and isinstance(val, (int, float)):
-                    if val >= 80:
+                    if val >= 70:
                         cell.fill = GREEN_FILL
                     elif val >= 50:
                         cell.fill = AMBER_FILL
